@@ -255,6 +255,10 @@ if not st.session_state["logged_in"]:
             padding: 0 40px;
         }
 
+        .story-text-right {
+            border-left: 1px solid #333;
+        }
+
         .story-title {
             font-family: 'Playfair Display', serif;
             font-size: 2.5rem;
@@ -314,6 +318,18 @@ if not st.session_state["logged_in"]:
             0% { opacity: 0; filter: blur(20px); letter-spacing: 14px; transform: scale(0.9); }
             45% { opacity: 0.6; filter: blur(6px); letter-spacing: 4px; color: #52525b; }
             100% { opacity: 1; filter: blur(0px); letter-spacing: normal; transform: scale(1); color: #ffffff; }
+        }
+
+        /* --- MOBILE RESPONSIVE OVERRIDES --- */
+        @media (max-width: 768px) {
+            .opal-title { font-size: clamp(2rem, 10vw, 3rem) !important; }
+            .features-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
+            .story-section { flex-direction: column !important; margin: 60px auto !important; }
+            .story-text-container { padding: 0 15px !important; }
+            .story-text-right { border-left: none !important; border-top: 1px solid #333 !important; padding-top: 30px !important; margin-top: 30px !important; }
+            .story-image-container { margin-top: 40px !important; width: 100% !important; }
+            .story-img { width: 100% !important; }
+            .story-title { font-size: 2rem !important; }
         }
     </style>
     
@@ -384,7 +400,7 @@ if not st.session_state["logged_in"]:
                     como "Custo Fixo". Nós entendemos como falta de inteligência na malha de distribuição.
                 </div>
             </div>
-            <div class="story-text-container decrypt-on-scroll" style="border-left: 1px solid #333;">
+            <div class="story-text-container story-text-right decrypt-on-scroll">
                 <div class="story-title">A Solução Agressiva</div>
                 <div class="story-paragraph">
                     Criamos um motor de Pesquisa Operacional em Nuvem. O sistema mapeia cada quilograma de sobra 
