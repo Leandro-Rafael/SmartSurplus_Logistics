@@ -483,19 +483,23 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
+    # State Base for Manual Entries
+    if "manual_suppliers" not in st.session_state:
+        st.session_state["manual_suppliers"] = pd.DataFrame(columns=["ID", "Nome", "Lat", "Lon", "Excedente_kg", "Categoria"])
+    if "manual_ngos" not in st.session_state:
+        st.session_state["manual_ngos"] = pd.DataFrame(columns=["ID", "Nome", "Lat", "Lon", "Demanda_kg", "Categoria"])
+        
     # Execução Lógica Centralizada
-    def handle_execution(n_sup, n_ngo, disaster):
-        if n_sup == 0 or n_ngo == 0:
-            st.session_state["suppliers"] = pd.DataFrame()
-            st.session_state["ngos"] = pd.DataFrame()
+    def handle_execution(disaster):
+        suppliers_df = st.session_state["manual_suppliers"]
+        ngos_df = st.session_state["manual_ngos"]
+        
+        if suppliers_df.empty or ngos_df.empty:
             st.session_state["results"] = pd.DataFrame()
             st.session_state["caos"] = {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Caotico': 0, 'Total_Transportado_kg': 0}
             st.session_state["opt"] = {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Otimo': 0, 'Total_Transportado_kg': 0}
-            st.session_state["ran"] = True
             return
             
-        suppliers_df = generate_suppliers(n_sup)
-        ngos_df = generate_ngos(n_ngo)
         dist_dict, _ = calculate_distance_matrix(suppliers_df, ngos_df)
         
         if disaster:
@@ -504,21 +508,46 @@ else:
         caos_metrics = simulate_current_scenario(suppliers_df, ngos_df, dist_dict)
         results_df, opt_metrics = run_optimization(suppliers_df, ngos_df, dist_dict)
         
-        st.session_state["suppliers"] = suppliers_df
-        st.session_state["ngos"] = ngos_df
         st.session_state["results"] = results_df
         st.session_state["caos"] = caos_metrics
         st.session_state["opt"] = opt_metrics
-        st.session_state["ran"] = True
 
     # SIDEBAR MINIMALISTA
     st.sidebar.markdown("<h3 style='text-align:center; font-family: Playfair Display, serif;'>SmartSurplus</h3>", unsafe_allow_html=True)
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
     
-    st.sidebar.markdown("**OFERTA & DEMANDA**")
-    num_suppliers = st.sidebar.slider("Centros (Hipermercados)", 0, 30, 0)
-    num_ngos = st.sidebar.slider("Endpoints (ONGs)", 0, 20, 0)
+    st.sidebar.markdown("**NOVO PONTO MAPA**")
+    last_clicked = st.session_state.get("map_click_data", None)
     
+    if last_clicked:
+        st.sidebar.success("📍 Marcador em posição.")
+        with st.sidebar.form("add_point"):
+            p_type = st.radio("Selecione a Entidade:", ["Supermercado (Oferece)", "ONG (Precisa)"])
+            p_name = st.text_input("Nome da Unidade:")
+            p_cat = st.multiselect("Categorias Logísticas:", ["Frutas", "Laticínios", "Proteínas", "Hortaliças", "Secos e Grãos"])
+            p_kg = st.number_input("Carga/Déficit (Kg):", min_value=1, value=100)
+            
+            if st.form_submit_button("Lançar na Malha"):
+                lat, lon = last_clicked['lat'], last_clicked['lng']
+                cat_str = ", ".join(p_cat) if p_cat else "Geral"
+                
+                if "Supermercado" in p_type:
+                    new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
+                    new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": p_kg, "Categoria": cat_str}])
+                    st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
+                else:
+                    new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
+                    new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": p_kg, "Categoria": cat_str}])
+                    st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
+                
+                st.session_state["map_click_data"] = None 
+                st.session_state["map_click_processed"] = last_clicked
+                
+                # We defer handle_execution strictly to explicitly update the UI
+                st.rerun()
+    else:
+        st.sidebar.info("👆 Clique livremente no mapa para pinar Supermercados ou ONGs.")
+        
     st.sidebar.markdown("<hr style='opacity:0.2'>", unsafe_allow_html=True)
     st.sidebar.markdown("**ENGENHARIA REVERSA**")
     disaster_mode = st.sidebar.toggle("Bloqueio Simulado (Crise Viária)")
@@ -530,16 +559,16 @@ else:
     mode_route = st.sidebar.radio("Polígonos de Rota:", ["Nativa (Linha Direta)", "Satélite (GPS Real)"])
 
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
-    if st.sidebar.button("Computar Roteamento", type="primary", use_container_width=True):
+    if st.sidebar.button("Recalcular IA de Otimização", type="primary", use_container_width=True):
         if disaster_mode:
             st.toast("CEMADEN: Vias submersas detectadas. Recalculando Tensor...", icon="⚠️")
         with st.spinner("Processando Matrizes Espaciais..."):
-            handle_execution(num_suppliers, num_ngos, disaster_mode)
+            handle_execution(disaster_mode)
             
     # Auto-Execute no Login
     if "ran" not in st.session_state:
-        with st.spinner("Inicializando Ambiente Operacional..."):
-            handle_execution(num_suppliers, num_ngos, disaster_mode)
+        st.session_state["ran"] = True
+        handle_execution(disaster_mode)
 
     # HEADER INTERNO
     st.markdown("<h2 style='color: #ffffff;'>Analytics</h2>", unsafe_allow_html=True)
@@ -548,11 +577,11 @@ else:
     tab1, tab2, tab3 = st.tabs(["Overview", "Despachos", "Predictive Horizon"])
 
     with tab1:
-        suppliers_df = st.session_state["suppliers"]
-        ngos_df = st.session_state["ngos"]
-        results_df = st.session_state["results"]
-        caos = st.session_state["caos"]
-        opt = st.session_state["opt"]
+        suppliers_df = st.session_state["manual_suppliers"]
+        ngos_df = st.session_state["manual_ngos"]
+        results_df = st.session_state.get("results", pd.DataFrame())
+        caos = st.session_state.get("caos", {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Caotico': 0, 'Total_Transportado_kg': 0})
+        opt = st.session_state.get("opt", {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Otimo': 0, 'Total_Transportado_kg': 0})
 
         col1, col2, col3 = st.columns(3)
         diff_desperdicio = ((caos['Total_Desperdicio_kg'] - opt['Total_Desperdicio_kg']) / max(1, caos['Total_Desperdicio_kg'])) * 100
@@ -592,13 +621,18 @@ else:
         st.markdown("<br>", unsafe_allow_html=True)
         
         # MAPA FOLIUM
-        if not suppliers_df.empty:
-            center_lat = suppliers_df['Lat'].mean()
-            center_lon = suppliers_df['Lon'].mean()
+        if not suppliers_df.empty or not ngos_df.empty:
+            all_lats = pd.concat([suppliers_df['Lat'] if not suppliers_df.empty else pd.Series(), ngos_df['Lat'] if not ngos_df.empty else pd.Series()])
+            all_lons = pd.concat([suppliers_df['Lon'] if not suppliers_df.empty else pd.Series(), ngos_df['Lon'] if not ngos_df.empty else pd.Series()])
+            center_lat, center_lon = all_lats.mean(), all_lons.mean()
         else:
             center_lat, center_lon = -23.5505, -46.6333 # SP Default Default zero map
             
         m = folium.Map(location=[center_lat, center_lon], zoom_start=11, tiles="CartoDB dark_matter")
+        
+        # Opcional: Adicionar controle de desenho (Desativado pois vamos usar clique livre para melhor UI)
+        # from folium.plugins import Draw
+        # Draw(export=False, position='topleft', draw_options={'polyline':False, 'polygon':False, 'circle':False, 'rectangle':False, 'circlemarker':False, 'marker':True}).add_to(m)
         
         # Elimina a marca d'água de Créditos de código-aberto (Leaflet / OpenStreetMaps) dentro do Iframe
         m.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution { display: none !important; }</style>"))
@@ -619,7 +653,7 @@ else:
             """
             folium.Marker(
                 location=[row["Lat"], row["Lon"]],
-                popup=f"<b>{row['Nome']}</b><br>{row['Excedente_kg']} kg de sobra",
+                popup=f"<b>{row['Nome']}</b> <br><small>[{row.get('Categoria', '')}]</small><br>{row['Excedente_kg']} kg de sobra",
                 tooltip=row["Nome"],
                 icon=folium.DivIcon(html=html_sup, icon_size=(32, 32), icon_anchor=(16, 38))
             ).add_to(m)
@@ -640,7 +674,7 @@ else:
             """
             folium.Marker(
                 location=[row["Lat"], row["Lon"]],
-                popup=f"<b>{row['Nome']}</b><br>Déficit: {row['Demanda_kg']} kg",
+                popup=f"<b>{row['Nome']}</b> <br><small>[{row.get('Categoria', '')}]</small><br>Déficit: {row['Demanda_kg']} kg",
                 tooltip=row["Nome"],
                 icon=folium.DivIcon(html=html_ngo, icon_size=(32, 32), icon_anchor=(16, 38))
             ).add_to(m)
@@ -674,7 +708,13 @@ else:
                     tooltip=f"{row['Fornecedor']} ➤ {row['ONG']} ({qty} kg)"
                 ).add_to(m)
                 
-        st_folium(m, width=None, height=520, returned_objects=[])
+        # CAPTURA INTELIGENTE DE MAPA PARA INTERATIVIDADE
+        map_resp = st_folium(m, width=None, height=520, returned_objects=["last_clicked"])
+        if map_resp and map_resp.get("last_clicked"):
+            l_clk = map_resp["last_clicked"]
+            if st.session_state.get("map_click_data") != l_clk and st.session_state.get("map_click_processed") != l_clk:
+                st.session_state["map_click_data"] = l_clk
+                st.rerun()
 
     with tab2:
         st.markdown("<br>", unsafe_allow_html=True)
