@@ -17,6 +17,21 @@ from data_generator import generate_suppliers, generate_ngos, calculate_distance
 from optimization import run_optimization, simulate_current_scenario, apply_disaster_to_distances
 
 @st.cache_data(show_spinner=False)
+def geocode_address(address):
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {"q": address, "format": "json", "limit": 1}
+        headers = {"User-Agent": "SmartSurplus_Logistics_App/1.0"}
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            if data:
+                return float(data[0]["lat"]), float(data[0]["lon"])
+    except Exception:
+        pass
+    return None, None
+
+@st.cache_data(show_spinner=False)
 def get_osrm_route(start_lat, start_lon, end_lat, end_lon):
     url = f"http://router.project-osrm.org/route/v1/driving/{start_lon},{start_lat};{end_lon},{end_lat}?overview=full&geometries=geojson"
     for attempt in range(3):
@@ -516,37 +531,66 @@ else:
     st.sidebar.markdown("<h3 style='text-align:center; font-family: Playfair Display, serif;'>SmartSurplus</h3>", unsafe_allow_html=True)
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
     
-    st.sidebar.markdown("**NOVO PONTO MAPA**")
+    st.sidebar.markdown("**NOVO PONTO**")
+    input_mode = st.sidebar.radio("Modo de Inserção:", ["📍 Clique no Mapa", "📝 Endereço de Texto"], horizontal=True, label_visibility="collapsed")
+    
     last_clicked = st.session_state.get("map_click_data", None)
     
-    if last_clicked:
-        st.sidebar.success("📍 Marcador em posição.")
-        with st.sidebar.form("add_point"):
+    if input_mode == "📍 Clique no Mapa":
+        if last_clicked:
+            st.sidebar.success("📍 Marcador em posição.")
+            with st.sidebar.form("add_point"):
+                p_type = st.radio("Selecione a Entidade:", ["Supermercado (Oferece)", "ONG (Precisa)"])
+                p_name = st.text_input("Nome da Unidade:")
+                p_cat = st.multiselect("Categorias Logísticas:", ["Frutas", "Laticínios", "Proteínas", "Hortaliças", "Secos e Grãos"])
+                p_kg = st.number_input("Carga/Déficit (Kg):", min_value=1, value=100)
+                
+                if st.form_submit_button("Lançar na Malha"):
+                    lat, lon = last_clicked['lat'], last_clicked['lng']
+                    cat_str = ", ".join(p_cat) if p_cat else "Geral"
+                    
+                    if "Supermercado" in p_type:
+                        new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
+                        new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": p_kg, "Categoria": cat_str}])
+                        st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
+                    else:
+                        new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
+                        new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": p_kg, "Categoria": cat_str}])
+                        st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
+                    
+                    st.session_state["map_click_data"] = None 
+                    st.session_state["map_click_processed"] = last_clicked
+                    st.rerun()
+        else:
+            st.sidebar.info("👆 Clique livremente no mapa para pinar Supermercados ou ONGs.")
+    else:
+        st.sidebar.info("Digite o endereço exacto (Ex: Av. Paulista, 1000, Sao Paulo)")
+        with st.sidebar.form("add_point_address"):
+            p_address = st.text_input("Endereço Completo:")
             p_type = st.radio("Selecione a Entidade:", ["Supermercado (Oferece)", "ONG (Precisa)"])
             p_name = st.text_input("Nome da Unidade:")
             p_cat = st.multiselect("Categorias Logísticas:", ["Frutas", "Laticínios", "Proteínas", "Hortaliças", "Secos e Grãos"])
             p_kg = st.number_input("Carga/Déficit (Kg):", min_value=1, value=100)
             
-            if st.form_submit_button("Lançar na Malha"):
-                lat, lon = last_clicked['lat'], last_clicked['lng']
-                cat_str = ", ".join(p_cat) if p_cat else "Geral"
-                
-                if "Supermercado" in p_type:
-                    new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
-                    new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": p_kg, "Categoria": cat_str}])
-                    st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
+            if st.form_submit_button("Geolocalizar e Lançar"):
+                if not p_address.strip():
+                    st.error("Preencha o campo de endereço.")
                 else:
-                    new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
-                    new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": p_kg, "Categoria": cat_str}])
-                    st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
-                
-                st.session_state["map_click_data"] = None 
-                st.session_state["map_click_processed"] = last_clicked
-                
-                # We defer handle_execution strictly to explicitly update the UI
-                st.rerun()
-    else:
-        st.sidebar.info("👆 Clique livremente no mapa para pinar Supermercados ou ONGs.")
+                    lat, lon = geocode_address(p_address)
+                    if lat is not None and lon is not None:
+                        cat_str = ", ".join(p_cat) if p_cat else "Geral"
+                        if "Supermercado" in p_type:
+                            new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
+                            new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": p_kg, "Categoria": cat_str}])
+                            st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
+                        else:
+                            new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
+                            new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": p_kg, "Categoria": cat_str}])
+                            st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
+                        st.session_state["map_click_data"] = None 
+                        st.rerun()
+                    else:
+                        st.error("Endereço não localizado pelo satélite.")
         
     st.sidebar.markdown("<hr style='opacity:0.2'>", unsafe_allow_html=True)
     st.sidebar.markdown("**ENGENHARIA REVERSA**")
