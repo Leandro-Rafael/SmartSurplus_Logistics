@@ -674,6 +674,23 @@ else:
             
         m = folium.Map(location=[center_lat, center_lon], zoom_start=11, tiles="CartoDB dark_matter")
         
+        # Desenhar ZONA DE CRISE se ativado
+        if disaster_mode and not suppliers_df.empty and not ngos_df.empty:
+            # Epicentro será no meio geográfico do painel, ligeiramente deslocado
+            crisis_lat = center_lat + 0.01
+            crisis_lon = center_lon + 0.01
+            folium.CircleMarker(
+                location=[crisis_lat, crisis_lon],
+                radius=50,
+                color="#EF4444",
+                weight=2,
+                fill=True,
+                fill_color="#EF4444",
+                fill_opacity=0.3,
+                popup="<b>⛔ ZONA DE BLOQUEIO</b><br>Trânsito/Alagamento severo.",
+                tooltip="Crise Viária Ativa"
+            ).add_to(m)
+        
         # Opcional: Adicionar controle de desenho (Desativado pois vamos usar clique livre para melhor UI)
         # from folium.plugins import Draw
         # Draw(export=False, position='topleft', draw_options={'polyline':False, 'polygon':False, 'circle':False, 'rectangle':False, 'circlemarker':False, 'marker':True}).add_to(m)
@@ -735,7 +752,7 @@ else:
                 qty = row["Qtde_kg"]
                 
                 weight = max(2, min(8, (qty / 50) * 8))
-                cor_fundo = "#EF4444" if disaster_mode else "#f8fafc" # Branco cru ou vermelho crise 
+                cor_fundo = "#38bdf8" if disaster_mode else "#f8fafc" # Azul claro brilhante para rotas de desvio
                 
                 if mode_route == "Satélite (GPS Real)":
                     route_path = get_osrm_route(s_lat, s_lon, n_lat, n_lon)
@@ -745,7 +762,7 @@ else:
                 plugins.AntPath(
                     locations=route_path,
                     color=cor_fundo,
-                    pulse_color="#000000", # Pulso negro cruzando o branco
+                    pulse_color="#000000" if not disaster_mode else "#eff6ff", # Pulso claro na rota azul
                     weight=weight,
                     delay=1200,
                     dash_array=[10, 30],
