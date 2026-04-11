@@ -518,7 +518,18 @@ else:
         dist_dict, _ = calculate_distance_matrix(suppliers_df, ngos_df)
         
         if disaster:
-            dist_dict = apply_disaster_to_distances(dist_dict)
+            dist_dict, penalized_pairs = apply_disaster_to_distances(dist_dict)
+            if penalized_pairs:
+                first_pair = penalized_pairs[0]
+                s_coords = suppliers_df.set_index("ID")[["Lat", "Lon"]]
+                n_coords = ngos_df.set_index("ID")[["Lat", "Lon"]]
+                if first_pair[0] in s_coords.index and first_pair[1] in n_coords.index:
+                    st.session_state["crisis_route"] = [
+                        s_coords.loc[first_pair[0], "Lat"], s_coords.loc[first_pair[0], "Lon"],
+                        n_coords.loc[first_pair[1], "Lat"], n_coords.loc[first_pair[1], "Lon"]
+                    ]
+        else:
+            st.session_state["crisis_route"] = None
             
         caos_metrics = simulate_current_scenario(suppliers_df, ngos_df, dist_dict)
         results_df, opt_metrics = run_optimization(suppliers_df, ngos_df, dist_dict)
@@ -676,9 +687,40 @@ else:
         
         # Desenhar ZONA DE CRISE se ativado
         if disaster_mode and not suppliers_df.empty and not ngos_df.empty:
-            # Epicentro será no meio geográfico do painel, ligeiramente deslocado
-            crisis_lat = center_lat + 0.01
-            crisis_lon = center_lon + 0.01
+            c_route = st.session_state.get("crisis_route")
+            
+            if c_route and mode_route == "Satélite (GPS Real)":
+                crisis_path = get_osrm_route(c_route[0], c_route[1], c_route[2], c_route[3])
+                if crisis_path and len(crisis_path) > 0:
+                    folium.PolyLine(
+                        locations=crisis_path,
+                        color="#EF4444",
+                        weight=6,
+                        opacity=0.8,
+                        tooltip="Via Física Bloqueada"
+                    ).add_to(m)
+                    mid_idx = len(crisis_path) // 2
+                    crisis_lat, crisis_lon = crisis_path[mid_idx]
+                else:
+                    crisis_lat = (c_route[0] + c_route[2]) / 2
+                    crisis_lon = (c_route[1] + c_route[3]) / 2
+            elif c_route:
+                crisis_path = [[c_route[0], c_route[1]], [c_route[2], c_route[3]]]
+                folium.PolyLine(
+                    locations=crisis_path,
+                    color="#EF4444",
+                    weight=6,
+                    opacity=0.8,
+                    dash_array="10",
+                    tooltip="Linha Direta Interditada"
+                ).add_to(m)
+                crisis_lat = (c_route[0] + c_route[2]) / 2
+                crisis_lon = (c_route[1] + c_route[3]) / 2
+            else:
+                # Fallback genérico
+                crisis_lat = center_lat + 0.01
+                crisis_lon = center_lon + 0.01
+                
             folium.CircleMarker(
                 location=[crisis_lat, crisis_lon],
                 radius=50,

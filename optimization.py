@@ -10,13 +10,15 @@ def apply_disaster_to_distances(distance_dict, seed=99):
     """
     np.random.seed(seed)
     new_dist = copy.deepcopy(distance_dict)
+    penalized_pairs = []
     
     for s in new_dist:
         for n in new_dist[s]:
             # 30% de chance de a via principal estar bloqueada, o que triplica a distância (desvio longo)
             if np.random.rand() < 0.30:
                 new_dist[s][n] = new_dist[s][n] * 3.0
-    return new_dist
+                penalized_pairs.append((s, n))
+    return new_dist, penalized_pairs
 
 def run_optimization(suppliers_df, ngos_df, distance_dict, social_weight=1000, cost_weight=1):
     """
