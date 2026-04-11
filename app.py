@@ -500,9 +500,9 @@ else:
 
     # State Base for Manual Entries
     if "manual_suppliers" not in st.session_state:
-        st.session_state["manual_suppliers"] = pd.DataFrame(columns=["ID", "Nome", "Lat", "Lon", "Excedente_kg", "Categoria"])
+        st.session_state["manual_suppliers"] = pd.DataFrame(columns=["ID", "Nome", "Lat", "Lon", "Excedente_kg", "Categoria", "Inventario"])
     if "manual_ngos" not in st.session_state:
-        st.session_state["manual_ngos"] = pd.DataFrame(columns=["ID", "Nome", "Lat", "Lon", "Demanda_kg", "Categoria"])
+        st.session_state["manual_ngos"] = pd.DataFrame(columns=["ID", "Nome", "Lat", "Lon", "Demanda_kg", "Categoria", "Inventario"])
         
     # Execução Lógica Centralizada
     def handle_execution(disaster):
@@ -553,25 +553,42 @@ else:
             with st.sidebar.form("add_point"):
                 p_type = st.radio("Selecione a Entidade:", ["Supermercado (Oferece)", "ONG (Precisa)"])
                 p_name = st.text_input("Nome da Unidade:")
-                p_cat = st.multiselect("Categorias Logísticas:", ["Frutas", "Laticínios", "Proteínas", "Hortaliças", "Secos e Grãos"])
-                p_kg = st.number_input("Carga/Déficit (Kg):", min_value=1, value=100)
+                st.markdown("**Inventário Específico (Kg):**")
+                c1, c2 = st.columns(2)
+                with c1:
+                    kg_fru = st.number_input("Frutas", min_value=0, value=0)
+                    kg_lat = st.number_input("Laticínios", min_value=0, value=0)
+                    kg_pro = st.number_input("Proteínas", min_value=0, value=0)
+                with c2:
+                    kg_hor = st.number_input("Hortaliças", min_value=0, value=0)
+                    kg_sec = st.number_input("Secos e Grãos", min_value=0, value=0)
                 
                 if st.form_submit_button("Lançar na Malha"):
                     lat, lon = last_clicked['lat'], last_clicked['lng']
-                    cat_str = ", ".join(p_cat) if p_cat else "Geral"
+                    inventario = {}
+                    if kg_fru > 0: inventario["Frutas"] = kg_fru
+                    if kg_lat > 0: inventario["Laticínios"] = kg_lat
+                    if kg_pro > 0: inventario["Proteínas"] = kg_pro
+                    if kg_hor > 0: inventario["Hortaliças"] = kg_hor
+                    if kg_sec > 0: inventario["Secos e Grãos"] = kg_sec
                     
-                    if "Supermercado" in p_type:
-                        new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
-                        new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": p_kg, "Categoria": cat_str}])
-                        st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
+                    total_kg = sum(inventario.values())
+                    if total_kg == 0:
+                        st.error("Adicione carga em pelo menos uma categoria.")
                     else:
-                        new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
-                        new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": p_kg, "Categoria": cat_str}])
-                        st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
-                    
-                    st.session_state["map_click_data"] = None 
-                    st.session_state["map_click_processed"] = last_clicked
-                    st.rerun()
+                        cat_str = ", ".join(inventario.keys())
+                        if "Supermercado" in p_type:
+                            new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
+                            new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": total_kg, "Categoria": cat_str, "Inventario": inventario}])
+                            st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
+                        else:
+                            new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
+                            new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": total_kg, "Categoria": cat_str, "Inventario": inventario}])
+                            st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
+                        
+                        st.session_state["map_click_data"] = None 
+                        st.session_state["map_click_processed"] = last_clicked
+                        st.rerun()
         else:
             st.sidebar.info("👆 Clique livremente no mapa para pinar Supermercados ou ONGs.")
     else:
@@ -580,28 +597,46 @@ else:
             p_address = st.text_input("Endereço Completo:")
             p_type = st.radio("Selecione a Entidade:", ["Supermercado (Oferece)", "ONG (Precisa)"])
             p_name = st.text_input("Nome da Unidade:")
-            p_cat = st.multiselect("Categorias Logísticas:", ["Frutas", "Laticínios", "Proteínas", "Hortaliças", "Secos e Grãos"])
-            p_kg = st.number_input("Carga/Déficit (Kg):", min_value=1, value=100)
+            st.markdown("**Inventário Específico (Kg):**")
+            c1, c2 = st.columns(2)
+            with c1:
+                kg_fru = st.number_input("Frutas", min_value=0, value=0)
+                kg_lat = st.number_input("Laticínios", min_value=0, value=0)
+                kg_pro = st.number_input("Proteínas", min_value=0, value=0)
+            with c2:
+                kg_hor = st.number_input("Hortaliças", min_value=0, value=0)
+                kg_sec = st.number_input("Secos e Grãos", min_value=0, value=0)
             
             if st.form_submit_button("Geolocalizar e Lançar"):
                 if not p_address.strip():
                     st.error("Preencha o campo de endereço.")
                 else:
-                    lat, lon = geocode_address(p_address)
-                    if lat is not None and lon is not None:
-                        cat_str = ", ".join(p_cat) if p_cat else "Geral"
-                        if "Supermercado" in p_type:
-                            new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
-                            new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": p_kg, "Categoria": cat_str}])
-                            st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
-                        else:
-                            new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
-                            new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": p_kg, "Categoria": cat_str}])
-                            st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
-                        st.session_state["map_click_data"] = None 
-                        st.rerun()
+                    inventario = {}
+                    if kg_fru > 0: inventario["Frutas"] = kg_fru
+                    if kg_lat > 0: inventario["Laticínios"] = kg_lat
+                    if kg_pro > 0: inventario["Proteínas"] = kg_pro
+                    if kg_hor > 0: inventario["Hortaliças"] = kg_hor
+                    if kg_sec > 0: inventario["Secos e Grãos"] = kg_sec
+                    total_kg = sum(inventario.values())
+                    
+                    if total_kg == 0:
+                        st.error("Adicione carga em pelo menos uma categoria.")
                     else:
-                        st.error("Endereço não localizado pelo satélite.")
+                        lat, lon = geocode_address(p_address)
+                        if lat is not None and lon is not None:
+                            cat_str = ", ".join(inventario.keys())
+                            if "Supermercado" in p_type:
+                                new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
+                                new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": total_kg, "Categoria": cat_str, "Inventario": inventario}])
+                                st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
+                            else:
+                                new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
+                                new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": total_kg, "Categoria": cat_str, "Inventario": inventario}])
+                                st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
+                            st.session_state["map_click_data"] = None 
+                            st.rerun()
+                        else:
+                            st.error("Endereço não localizado pelo satélite.")
         
     st.sidebar.markdown("<hr style='opacity:0.2'>", unsafe_allow_html=True)
     st.sidebar.markdown("**ENGENHARIA REVERSA**")
