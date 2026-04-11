@@ -330,6 +330,8 @@ if not st.session_state["logged_in"]:
             .story-image-container { margin-top: 40px !important; width: 100% !important; }
             .story-img { width: 100% !important; }
             .story-title { font-size: 2rem !important; }
+            /* Correção para as Tabelas não esmagarem as colunas no celular */
+            [data-testid="stDataFrame"] { width: 100% !important; overflow-x: auto !important; }
         }
     </style>
     
@@ -721,8 +723,16 @@ else:
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font=dict(color="#a1a1aa", family="Inter"),
-            title="Detecção Antecipada: Pico de Perda em D+30 (Natal).",
+            title=dict(text="Detecção Antecipada: Pico de Perda em D+30", font=dict(size=14)),
             hovermode="x unified",
-            legend_title="Pipeline"
+            legend=dict(
+                title="Pipeline",
+                orientation="h",
+                yanchor="bottom",
+                y=-0.4,
+                xanchor="center",
+                x=0.5
+            ),
+            margin=dict(l=10, r=10, t=40, b=10)
         )
         st.plotly_chart(fig_ml, use_container_width=True)
