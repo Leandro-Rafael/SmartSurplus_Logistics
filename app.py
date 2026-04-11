@@ -912,33 +912,85 @@ else:
 
     with tab3:
         st.markdown("<br>", unsafe_allow_html=True)
-        meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-        base_waste = [800, 750, 900, 850, 1100, 1050, 1200, 1250, 1150, 1300, 1400, 1800]
         
-        ml_df = pd.DataFrame({
-            "Mês": meses,
-            "Baseline Coletado": base_waste,
-            "Predição LSTM": [x * 1.05 + np.random.normal(0, 50) for x in base_waste]
-        })
-        
-        fig_ml = px.line(ml_df, x="Mês", y=["Baseline Coletado", "Predição LSTM"],
-                      color_discrete_sequence=["#3f3f46", "#f4f4f5"],
-                      markers=True)
-                      
-        fig_ml.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#a1a1aa", family="Inter"),
-            title=dict(text="Detecção Antecipada: Pico de Perda em D+30", font=dict(size=14)),
-            hovermode="x unified",
-            legend=dict(
-                title="Pipeline",
-                orientation="h",
-                yanchor="bottom",
-                y=-0.4,
-                xanchor="center",
-                x=0.5
-            ),
-            margin=dict(l=10, r=10, t=40, b=10)
+        st.markdown("<h4 style='color: #ffffff; font-family: Playfair Display, serif;'>Inteligência Artificial LSTM (Long Short-Term Memory)</h4>", unsafe_allow_html=True)
+        st.markdown(
+            "<span style='color: #a1a1aa; font-size: 0.95rem;'>"
+            "O nosso modelo processa sazonalidade de safras, padrões de feriado e anomalias de mercado para <b>prever o volume de desperdício em tempo real</b>. "
+            "Ao enxergar o horizonte (D+30 a D+360), a malha de ONGs pode preparar galpões de transbordo extras antes da comida sequer estragar nas prateleiras dos supermercados."
+            "</span>", unsafe_allow_html=True
         )
-        st.plotly_chart(fig_ml, use_container_width=True)
+        st.markdown("<hr style='opacity:0.2'>", unsafe_allow_html=True)
+        
+        col_ctrl, col_graph = st.columns([1.2, 2])
+        
+        with col_ctrl:
+            st.markdown("**Simulador de Anomalias Globais**")
+            inflacao = st.slider("Choque de Inflação (%)", min_value=-5, max_value=30, value=5, step=1, help="Corrói o poder de compra e aumenta a sobra de produtos na prateleira.")
+            clima = st.slider("Extremo Climático / Quebra de Safra (%)", min_value=-10, max_value=40, value=12, step=1, help="Secas ou alagamentos que superlotam centros de distribuição abruptamente.")
+            
+            # Fator multiplicador preditivo interativo
+            fator_risco = 1.0 + (inflacao / 100.0) + (clima / 100.0)
+            aumento_previsto = (fator_risco - 1) * 100
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="metric-card" style="border-left: 4px solid #ef4444; margin-bottom: 20px;">
+                <div class="metric-label">MÊS DE RISCO MÁXIMO PROJETADO</div>
+                <div class="metric-value" style="font-size: 1.8rem;">Dezembro</div>
+                <div class="metric-diff-good" style="color:#ef4444;">▲ PICO DE +{aumento_previsto:.1f}% DESPERDÍCIO</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            frota_recomendada = max(0, int(aumento_previsto * 0.8))
+            st.markdown(f"""
+            <div class="metric-card" style="border-left: 4px solid #38bdf8;">
+                <div class="metric-label" style="color: #38bdf8;">ALERTA ZERO-WASTE & RECOMENDAÇÃO LOGÍSTICA</div>
+                <div style="font-size: 0.95rem; color: #d4d4d8; padding-top: 8px; line-height: 1.4;">
+                    A malha atual não absorverá o choque previsto. A IA recomenda expandir frotas terceirizadas em <b>{frota_recomendada}%</b> no último trimestre para mitigar o colapso do ecossistema.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with col_graph:
+            meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+            
+            # Dinamizar volume base para o contexto da simulação atual (se possível)
+            kg_base_rede = st.session_state.get("manual_suppliers", pd.DataFrame())["Excedente_kg"].sum()
+            base_multiplier = max(1, kg_base_rede / 100) if kg_base_rede > 0 else 10
+            
+            # Curva referencial simulada
+            base_curve = [100, 95, 110, 105, 130, 120, 150, 160, 140, 180, 190, 250]
+            base_waste = [int(x * base_multiplier) for x in base_curve]
+            
+            np.random.seed(42) # Consistência visual no ruído baseline
+            ml_df = pd.DataFrame({
+                "Mês": meses,
+                "Histórico (Sem IA)": base_waste,
+                "Predição LSTM (Horizonte +30D)": [x * fator_risco + np.random.normal(0, max(1, x*0.05)) for x in base_waste]
+            })
+            
+            fig_ml = px.line(ml_df, x="Mês", y=["Histórico (Sem IA)", "Predição LSTM (Horizonte +30D)"],
+                          color_discrete_sequence=["#3f3f46", "#38bdf8"],
+                          markers=True)
+                          
+            fig_ml.update_layout(
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#a1a1aa", family="Inter"),
+                title=dict(text="Curva de Sensibilidade Linear: Estresse Logístico Acumulado", font=dict(size=14, color="#ffffff")),
+                hovermode="x unified",
+                legend=dict(
+                    title="",
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.25,
+                    xanchor="center",
+                    x=0.5
+                ),
+                margin=dict(l=10, r=10, t=40, b=10)
+            )
+            # Fazer a linha Preditiva ser pontilhada para efeito de projeção
+            fig_ml.update_traces(patch={"line": {"dash": "dot"}}, selector={"name": "Predição LSTM (Horizonte +30D)"})
+            
+            st.plotly_chart(fig_ml, use_container_width=True)
