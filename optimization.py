@@ -95,6 +95,26 @@ def run_optimization(suppliers_df, ngos_df, distance_dict, social_weight=1000, c
     
     total_supply = suppliers_df['Excedente_kg'].sum()
     total_demand = ngos_df['Demanda_kg'].sum()
+    surplus_records = []
+    deficit_records = []
+    
+    if prob.status == pulp.LpStatusOptimal:
+        for s in S:
+            for c in C:
+                supplied = sum(pulp.value(x[s][n][c]) for n in N if pulp.value(x[s][n][c]) is not None)
+                rem = supply[s].get(c, 0) - supplied
+                if rem > 0.01:
+                    surplus_records.append({"ID_Entidade": s, "Categoria": c, "Sobra_kg": round(rem, 2)})
+                    
+        for n in N:
+            for c in C:
+                received = sum(pulp.value(x[s][n][c]) for s in S if pulp.value(x[s][n][c]) is not None)
+                missing = demand[n].get(c, 0) - received
+                if missing > 0.01:
+                    deficit_records.append({"ID_Entidade": n, "Categoria": c, "Falta_kg": round(missing, 2)})
+                    
+    surplus_df = pd.DataFrame(surplus_records) if surplus_records else pd.DataFrame(columns=["ID_Entidade", "Categoria", "Sobra_kg"])
+    deficit_df = pd.DataFrame(deficit_records) if deficit_records else pd.DataFrame(columns=["ID_Entidade", "Categoria", "Falta_kg"])
     
     metrics = {
         "Status": status,
@@ -105,7 +125,7 @@ def run_optimization(suppliers_df, ngos_df, distance_dict, social_weight=1000, c
         "Custo_Logistico_Otimo": round(total_cost, 2),
         "Refeicoes_Geradas": int(total_transported * 2)
     }
-    return results_df, metrics
+    return results_df, surplus_df, deficit_df, metrics
 
 def simulate_current_scenario(suppliers_df, ngos_df, distance_dict):
     """

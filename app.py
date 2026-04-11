@@ -511,6 +511,8 @@ else:
         
         if suppliers_df.empty or ngos_df.empty:
             st.session_state["results"] = pd.DataFrame()
+            st.session_state["surplus_df"] = pd.DataFrame()
+            st.session_state["deficit_df"] = pd.DataFrame()
             st.session_state["caos"] = {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Caotico': 0, 'Total_Transportado_kg': 0}
             st.session_state["opt"] = {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Otimo': 0, 'Total_Transportado_kg': 0}
             return
@@ -532,9 +534,11 @@ else:
             st.session_state["crisis_route"] = None
             
         caos_metrics = simulate_current_scenario(suppliers_df, ngos_df, dist_dict)
-        results_df, opt_metrics = run_optimization(suppliers_df, ngos_df, dist_dict)
+        results_df, surplus_df, deficit_df, opt_metrics = run_optimization(suppliers_df, ngos_df, dist_dict)
         
         st.session_state["results"] = results_df
+        st.session_state["surplus_df"] = surplus_df
+        st.session_state["deficit_df"] = deficit_df
         st.session_state["caos"] = caos_metrics
         st.session_state["opt"] = opt_metrics
 
@@ -664,7 +668,7 @@ else:
     st.markdown("<h2 style='color: #ffffff;'>Analytics</h2>", unsafe_allow_html=True)
     
     # TABS PREMIUM
-    tab1, tab2, tab3 = st.tabs(["Overview", "Despachos", "Predictive Horizon"])
+    tab1, tab2, tab4, tab5, tab3 = st.tabs(["Overview", "Despachos", "Déficit das ONGs", "Estoque Remanescente", "Predictive Horizon"])
 
     with tab1:
         suppliers_df = st.session_state["manual_suppliers"]
@@ -884,6 +888,27 @@ else:
             st.markdown("</center>", unsafe_allow_html=True)
         else:
             st.warning("Malha bloqueada. Alivie parâmetros.")
+
+    with tab4:
+        st.markdown("<br>", unsafe_allow_html=True)
+        deficit_df = st.session_state.get("deficit_df", pd.DataFrame())
+        if not deficit_df.empty:
+            # Join with ngos names
+            def_df = deficit_df.merge(st.session_state["manual_ngos"][["ID", "Nome"]], left_on="ID_Entidade", right_on="ID")
+            def_df = def_df[["Nome", "Categoria", "Falta_kg"]].rename(columns={"Nome": "ONG Suplicante"})
+            st.dataframe(def_df, use_container_width=True, hide_index=True)
+        else:
+            st.success("Toda a demanda das ONGs foi contemplada! Nenhum déficit restante nas categorias solicitadas.")
+
+    with tab5:
+        st.markdown("<br>", unsafe_allow_html=True)
+        surplus_df = st.session_state.get("surplus_df", pd.DataFrame())
+        if not surplus_df.empty:
+            sur_df = surplus_df.merge(st.session_state["manual_suppliers"][["ID", "Nome"]], left_on="ID_Entidade", right_on="ID")
+            sur_df = sur_df[["Nome", "Categoria", "Sobra_kg"]].rename(columns={"Nome": "Supermercado"})
+            st.dataframe(sur_df, use_container_width=True, hide_index=True)
+        else:
+            st.success("Estoque 100% esvaziado! Nenhum supermercado relata sobras.")
 
     with tab3:
         st.markdown("<br>", unsafe_allow_html=True)
