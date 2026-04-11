@@ -443,6 +443,41 @@ if not st.session_state["logged_in"]:
     
     st.markdown("<br><br>", unsafe_allow_html=True)
     
+    st.markdown("""
+        <div style="max-width: 1000px; margin: 80px auto; padding: 20px;">
+            <div class="opal-title" style="font-size: 2.5rem; text-align: left; margin-bottom: 10px;">Arquitetura Operacional</div>
+            <div class="opal-subtitle" style="text-align: left; margin-left: 0; margin-bottom: 50px; max-width: 1000px;">Por que somos a solução ponta-a-ponta definitiva para logística humanitária preditiva:</div>
+            
+            <div class="features-grid" style="grid-template-columns: repeat(2, 1fr); gap: 30px;">
+                <div class="feature-card" style="background: rgba(20,20,20,0.8);">
+                    <i class="material-icons" style="color: #38bdf8; font-size: 36px; margin-bottom: 15px;">map</i>
+                    <h3 style="color: #38bdf8;">I. Motor WebGIS Sandbox</h3>
+                    <p>Mapeamento de alta precisão conectado nativamente aos satélites OSRM e Nominatim. Construa pontos no mapa com cliques ou textos. O sistema rastreia as rotas por ruas precisas da malha rodoviária federal e estadual.</p>
+                </div>
+                
+                <div class="feature-card" style="background: rgba(20,20,20,0.8);">
+                    <i class="material-icons" style="color: #10b981; font-size: 36px; margin-bottom: 15px;">hub</i>
+                    <h3 style="color: #10b981;">II. Otimização LP Multi-Commodity</h3>
+                    <p>Diferente de sistemas rudimentares que cruzam apenas peso genérico, nosso algoritmo (Python PuLP) roteiriza 5 categorias de alimento simultaneamente. Se uma ONG precisa de proteínas, a IA se recusa a enviar frutas. Entrega zero-waste.</p>
+                </div>
+                
+                <div class="feature-card" style="background: rgba(20,20,20,0.8);">
+                    <i class="material-icons" style="color: #ef4444; font-size: 36px; margin-bottom: 15px;">warning</i>
+                    <h3 style="color: #ef4444;">III. Engenharia de Desastres</h3>
+                    <p>Rastreia rupturas climáticas como alagamentos e bloqueios na via de suprimento. Acione o simulador e assista Zonas de Crise se formarem e dezenas de veículos alterarem suas rotas dinamicamente buscando veias secundárias mais rentáveis.</p>
+                </div>
+                
+                <div class="feature-card" style="background: rgba(20,20,20,0.8);">
+                    <i class="material-icons" style="color: #eab308; font-size: 36px; margin-bottom: 15px;">query_stats</i>
+                    <h3 style="color: #eab308;">IV. Preditibilidade LSTM ao Vivo</h3>
+                    <p>A arquitetura de Machine Learning Long Short-Term Memory entende a flutuação macroeconômica. Ajuste parâmetros inflacionários ao vivo e observe a curva do gráfico se flexionar prevendo onde alocar capital em fretistas para evitar estrangulamento futuro.</p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
     # Bottom CTA
     st.markdown('<div class="opal-title" style="font-size: 3rem;">Pronto para transformar sua frota?</div>', unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
@@ -912,14 +947,7 @@ else:
 
     with tab3:
         st.markdown("<br>", unsafe_allow_html=True)
-        
-        st.markdown("<h4 style='color: #ffffff; font-family: Playfair Display, serif;'>Inteligência Artificial LSTM (Long Short-Term Memory)</h4>", unsafe_allow_html=True)
-        st.markdown(
-            "<span style='color: #a1a1aa; font-size: 0.95rem;'>"
-            "O nosso modelo processa sazonalidade de safras, padrões de feriado e anomalias de mercado para <b>prever o volume de desperdício em tempo real</b>. "
-            "Ao enxergar o horizonte (D+30 a D+360), a malha de ONGs pode preparar galpões de transbordo extras antes da comida sequer estragar nas prateleiras dos supermercados."
-            "</span>", unsafe_allow_html=True
-        )
+        st.markdown("<h4 style='color: #ffffff; font-family: Playfair Display, serif;'>Inteligência Artificial LSTM</h4>", unsafe_allow_html=True)
         st.markdown("<hr style='opacity:0.2'>", unsafe_allow_html=True)
         
         col_ctrl, col_graph = st.columns([1.2, 2])
