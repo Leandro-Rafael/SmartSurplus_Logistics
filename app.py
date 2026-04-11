@@ -863,6 +863,9 @@ else:
             pretty_df = pretty_df.rename(columns={"Nome": "Distrito de Recepção"})
             
             cols = ["Origem Operacional", "Distrito de Recepção", "Qtde_kg", "Distancia_km", "Custo_Estimado"]
+            if "Itens_Entregues" in pretty_df.columns:
+                cols.insert(3, "Itens_Entregues")
+                
             st.dataframe(pretty_df[cols], use_container_width=True, hide_index=True)
             
             output = io.BytesIO()

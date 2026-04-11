@@ -70,20 +70,28 @@ def run_optimization(suppliers_df, ngos_df, distance_dict, social_weight=1000, c
     if prob.status == pulp.LpStatusOptimal:
         for s in S:
             for n in N:
-                total_flow_sn = sum(pulp.value(x[s][n][c]) for c in C if pulp.value(x[s][n][c]) is not None)
+                details = []
+                total_flow_sn = 0
+                for c in C:
+                    val = pulp.value(x[s][n][c])
+                    if val is not None and val > 0.01:
+                        total_flow_sn += val
+                        details.append(f"{round(val, 2)}kg {c}")
+                        
                 if total_flow_sn > 0.01:
                     dist = distance_dict[s][n]
                     results.append({
                         "Fornecedor": s,
                         "ONG": n,
                         "Qtde_kg": round(total_flow_sn, 2),
+                        "Itens_Entregues": " + ".join(details),
                         "Distancia_km": round(dist, 2),
                         "Custo_Estimado": round(total_flow_sn * dist * cost_weight, 2)
                     })
                     total_transported += total_flow_sn
                     total_cost += total_flow_sn * dist * cost_weight
                     
-    results_df = pd.DataFrame(results) if len(results) > 0 else pd.DataFrame(columns=["Fornecedor", "ONG", "Qtde_kg", "Distancia_km", "Custo_Estimado"])
+    results_df = pd.DataFrame(results) if len(results) > 0 else pd.DataFrame(columns=["Fornecedor", "ONG", "Qtde_kg", "Itens_Entregues", "Distancia_km", "Custo_Estimado"])
     
     total_supply = suppliers_df['Excedente_kg'].sum()
     total_demand = ngos_df['Demanda_kg'].sum()
