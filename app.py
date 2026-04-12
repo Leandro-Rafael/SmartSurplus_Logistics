@@ -141,25 +141,14 @@ if not st.session_state["logged_in"]:
     # -----------------------------------------------
     # RICH LANDING PAGE (VITRINE CORPORATIVA)
     # -----------------------------------------------
-    try:
-        def get_base64(bin_file):
-            with open(bin_file, 'rb') as f:
-                data = f.read()
-            return base64.b64encode(data).decode()
-        bg_img = get_base64("assets/bw_logistics_bg.png")
-        bg_css = f"""
-        .stApp {{
-            background-color: #000000 !important;
-            background-image: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.8)), url("data:image/png;base64,{bg_img}") !important;
-            background-size: cover !important;
-            background-position: center !important;
-            background-attachment: fixed !important;
-        }}
-        """
-    except:
-        bg_css = ".stApp { background-color: #000000 !important; }"
-
-    st.markdown(f"<style>{bg_css}</style>", unsafe_allow_html=True)
+    st.markdown("""
+        <style>
+        .stApp {
+            background-color: transparent !important;
+            background-image: none !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     
     st.markdown("""
     <style>
@@ -200,7 +189,14 @@ if not st.session_state["logged_in"]:
             margin-right: auto;
         }
         
-        /* Video Background Template */
+        /* Video Background */
+        .video-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.85));
+            z-index: -998;
+        }
         .video-background {
             position: fixed;
             right: 0;
@@ -209,9 +205,9 @@ if not st.session_state["logged_in"]:
             min-height: 100vh;
             width: auto;
             height: auto;
-            z-index: -999; /* Joga pro buraco negro por de trás de tudo */
+            z-index: -999;
             object-fit: cover;
-            opacity: 0.3; /* Sombra sutil para não ofuscar as luzes 3D e Cartões */
+            filter: grayscale(100%);
         }
         
         /* Grid Setup para Cartões de Altura Idêntica */
@@ -350,10 +346,11 @@ if not st.session_state["logged_in"]:
         }
     </style>
     
-    <!-- TAG DO VIDEO MP4 PREPARADA (Vazia rodando em Loop no Background) -->
+    <!-- TAG DO VIDEO MP4 E OVERLAY -->
+    <div class="video-overlay"></div>
     <video autoplay loop muted playsinline class="video-background" id="bgVideo">
-        <!-- Cole o link oficial no atributo src abaixo assim que recebê-lo -->
-        <source src="https://cdn.pixabay.com/video/2021/08/04/83818-584742468_large.mp4" type="video/mp4">
+        <!-- Vídeo rodoviário noturno sugerindo vias limpas e sistema 24/7 -->
+        <source src="https://videos.pexels.com/video-files/853889/853889-hd_1920_1080_25fps.mp4" type="video/mp4">
     </video>
     """, unsafe_allow_html=True)
     
