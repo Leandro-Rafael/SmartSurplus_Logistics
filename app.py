@@ -404,6 +404,11 @@ if not st.session_state["logged_in"]:
     
     # --- NOVO ENREDO E MANIFESTO DE PRODUTO --- #
     try:
+        def get_base64(bin_file):
+            import base64
+            with open(bin_file, 'rb') as f:
+                data = f.read()
+            return base64.b64encode(data).decode()
         story_img = get_base64("assets/bw_smartsurplus_concept.png")
     except:
         story_img = ""
@@ -445,7 +450,7 @@ if not st.session_state["logged_in"]:
     st.markdown("<br><br>", unsafe_allow_html=True)
     
     st.markdown("""
-<div style="max-width: 1000px; margin: 80px auto; padding: 20px;">
+<div style="max-width: 1000px; margin: 80px auto; padding: 20px;" class="fade-in-up">
 <div class="opal-title" style="font-size: 2.5rem; text-align: left; margin-bottom: 10px;">Arquitetura Operacional</div>
 <div class="opal-subtitle" style="text-align: left; margin-left: 0; margin-bottom: 50px; max-width: 1000px;">Por que somos a solução ponta-a-ponta definitiva para logística humanitária preditiva:</div>
 <div class="features-grid" style="grid-template-columns: repeat(2, 1fr); gap: 30px;">
