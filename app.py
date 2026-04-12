@@ -349,8 +349,12 @@ if not st.session_state["logged_in"]:
     <!-- TAG DO VIDEO MP4 E OVERLAY -->
     <div class="video-overlay"></div>
     <video autoplay loop muted playsinline class="video-background" id="bgVideo">
-        <!-- Vídeo de Mapas e Data Nodes Inteligentes (Redes de Inteligência Artificial) -->
-        <source src="https://cdn.pixabay.com/video/2020/05/25/40141-424754593_large.mp4" type="video/mp4">
+        <!-- Digital Nodes & Artificial Intelligence Map Networks -->
+        <source src="https://videos.pexels.com/video-files/3129957/3129957-hd_1920_1080_25fps.mp4" type="video/mp4">
+        <source src="https://videos.pexels.com/video-files/3129595/3129595-uhd_2560_1440_30fps.mp4" type="video/mp4">
+        <source src="https://videos.pexels.com/video-files/5182823/5182823-uhd_2160_4096_25fps.mp4" type="video/mp4">
+        <!-- Fallback final (Rodovia Noturna de Alta Fiabilidade) que estava funcionando antes -->
+        <source src="https://videos.pexels.com/video-files/853889/853889-hd_1920_1080_25fps.mp4" type="video/mp4">
     </video>
     """, unsafe_allow_html=True)
     
