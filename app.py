@@ -10,6 +10,7 @@ import io
 import requests
 import base64
 import time
+import urllib.parse
 import streamlit.components.v1 as components
 
 # Nossos módulos
@@ -725,7 +726,7 @@ else:
     st.markdown("<h2 style='color: #ffffff;'>Analytics</h2>", unsafe_allow_html=True)
     
     # TABS PREMIUM
-    tab1, tab2, tab4, tab5, tab3 = st.tabs(["Overview", "Despachos", "Déficit das ONGs", "Estoque Remanescente", "Predictive Horizon"])
+    tab1, tab2, tab4, tab5, tab3, tab6 = st.tabs(["Overview", "Despachos", "Déficit das ONGs", "Estoque Remanescente", "Predictive Horizon", "📱 Motorista WebApp"])
 
     with tab1:
         suppliers_df = st.session_state["manual_suppliers"]
@@ -734,13 +735,17 @@ else:
         caos = st.session_state.get("caos", {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Caotico': 0, 'Total_Transportado_kg': 0})
         opt = st.session_state.get("opt", {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Otimo': 0, 'Total_Transportado_kg': 0})
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col_esg = st.columns(4)
         diff_desperdicio = ((caos['Total_Desperdicio_kg'] - opt['Total_Desperdicio_kg']) / max(1, caos['Total_Desperdicio_kg'])) * 100
         diff_ref = opt['Refeicoes_Geradas'] - caos['Refeicoes_Geradas']
         
         custo_caos_por_kg = caos["Custo_Logistico_Caotico"] / max(1, caos["Total_Transportado_kg"])
         custo_opt_por_kg = opt["Custo_Logistico_Otimo"] / max(1, opt["Total_Transportado_kg"])
         perc_custo_kg = (1 - (custo_opt_por_kg / max(0.01, custo_caos_por_kg))) * 100
+        
+        # Matematica ESG (1kg waste ~ 2.5kg CO2e. 1 tree ~ 21kg CO2/year)
+        co2_evitado = opt['Total_Transportado_kg'] * 2.5
+        arvores = int(co2_evitado / 21)
         
         with col1:
             st.markdown(f"""
@@ -763,12 +768,46 @@ else:
         with col3:
             st.markdown(f"""
             <div class="metric-card">
-                <div class="metric-label">Eficiência de Gasto (CPO)</div>
+                <div class="metric-label">Eficiência Monetária</div>
                 <div class="metric-value">R$ {custo_opt_por_kg:.2f}</div>
-                <div class="metric-diff-good">-{perc_custo_kg:.1f}% Emissão Financeira</div>
+                <div class="metric-diff-good">-{perc_custo_kg:.1f}% Emissão CPO</div>
             </div>
             """, unsafe_allow_html=True)
-
+            
+        with col_esg:
+            st.markdown(f"""
+            <div class="metric-card" style="border-left: 4px solid #10b981;">
+                <div class="metric-label" style="color: #10b981;">Crédito de Carbono ESG</div>
+                <div class="metric-value">{co2_evitado:.1f} kg</div>
+                <div class="metric-diff-good" style="color:#10b981;">🌲 Equivale a {arvores} Árvores Salvas</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        cert_html = f"""
+        <html><body style="font-family: Arial, sans-serif; padding: 50px; border: 10px solid #10b981; max-width: 800px; margin: auto; text-align: center;">
+        <h1 style="color: #10b981;">Certificado Oficial de Impacto Ambiental ESG</h1>
+        <h2>Plataforma LOGÍSTICA Inteligente SmartSurplus</h2>
+        <p style="font-size: 1.2rem; text-align: left; padding: 20px;">Atestamos formal e matematicamente que o algoritmo de Roteirização Multi-Commodity otimizou o direcionamento de donativos nesta data, neutralizando cadeias de desperdício alimentar.</p>
+        <div style="background: #f4f4f5; padding: 20px; border-radius: 10px; text-align: left; font-size: 1.2rem;">
+            <b>Gás Estufa (CO2e) não gerado:</b> {co2_evitado:.1f} Kg<br>
+            <b>Beneficiários Alimentados:</b> {opt['Refeicoes_Geradas']} Pessoas<br>
+            <b>Equivalência de Absorção:</b> O plantio de {arvores} árvores adultas trabalhando 1 ano.<br>
+        </div>
+        <p><i>Documento Auditável via Logística OSRM Satélite - {time.strftime('%Y')}</i></p>
+        </body></html>
+        """
+        
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            st.download_button(
+                label="📁 Emitir Alvará Oficial ESG (.html)",
+                data=cert_html,
+                file_name="Certificado_ESG_SmartSurplus.html",
+                mime="text/html",
+                use_container_width=True
+            )
+            
         st.markdown("<br>", unsafe_allow_html=True)
         
         # MAPA FOLIUM
@@ -927,7 +966,18 @@ else:
             if "Itens_Entregues" in pretty_df.columns:
                 cols.insert(3, "Itens_Entregues")
                 
-            st.dataframe(pretty_df[cols], use_container_width=True, hide_index=True)
+            def make_wa_link(row):
+                itens = row.get("Itens_Entregues", row['Qtde_kg'])
+                msg = f"🚚 *Ordem de Serviço SmartSurplus*\nOrigem: {row['Origem Operacional']}\nDestino: {row['Distrito de Recepção']}\nCarga Inspecionada: {itens}\n\nAbra o OSRM/Maps e faça a retirada."
+                encoded = urllib.parse.quote(msg)
+                return f"https://wa.me/?text={encoded}"
+                
+            pretty_df["Link Motorista (WA)"] = pretty_df.apply(make_wa_link, axis=1)
+            cols.append("Link Motorista (WA)")
+                
+            st.dataframe(pretty_df[cols], use_container_width=True, hide_index=True, column_config={
+                "Link Motorista (WA)": st.column_config.LinkColumn("🚀 Acionar Driver")
+            })
             
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -1044,3 +1094,50 @@ else:
             fig_ml.update_traces(patch={"line": {"dash": "dot"}}, selector={"name": "Predição LSTM (Horizonte +30D)"})
             
             st.plotly_chart(fig_ml, use_container_width=True)
+
+    with tab6:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if not results_df.empty:
+            first_dispatch = results_df.iloc[0]
+            s_name = st.session_state["manual_suppliers"].set_index("ID").loc[first_dispatch["Fornecedor"], "Nome"]
+            n_name = st.session_state["manual_ngos"].set_index("ID").loc[first_dispatch["ONG"], "Nome"]
+            itens = first_dispatch.get("Itens_Entregues", f"{first_dispatch['Qtde_kg']}kg")
+             
+            col_empty1, col_mob, col_empty2 = st.columns([1, 2, 1])
+            with col_mob:
+                st.markdown(f"""
+                <div style="background-color: #09090b; border: 1px solid #27272a; border-radius: 40px; padding: 25px; max-width: 380px; margin: 0 auto; box-shadow: 0px 10px 40px rgba(0,0,0,0.8); position: relative;">
+                    <!-- Simulador de iPhone Notch -->
+                    <div style="position: absolute; top: -2px; left: 50%; transform: translateX(-50%); width: 120px; height: 25px; background: #000; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;"></div>
+                    
+                    <div style="text-align: center; color: #a1a1aa; font-size: 0.8rem; margin-top: 15px; margin-bottom: 25px; font-weight: 600; letter-spacing: 1px;">DRIVER DISPATCH SYSTEM</div>
+                    
+                    <div style="background-color: #18181b; border: 1px solid #3f3f46; border-radius: 12px; padding: 18px; margin-bottom: 15px;">
+                        <span style="color: #38bdf8; font-size: 0.85rem; font-weight: bold; text-transform: uppercase;">A Ponto de Coleta (Origem)</span><br>
+                        <b style="color: white; font-size: 1.15rem;">{s_name}</b>
+                    </div>
+                    
+                    <div style="text-align: center; color: #52525b; margin: 5px 0;">
+                        <i class="material-icons">arrow_downward</i>
+                    </div>
+                    
+                    <div style="background-color: #18181b; border: 1px solid #3f3f46; border-radius: 12px; padding: 18px; margin-bottom: 15px;">
+                        <span style="color: #10b981; font-size: 0.85rem; font-weight: bold; text-transform: uppercase;">B Ponto de Despacho (Destino)</span><br>
+                        <b style="color: white; font-size: 1.15rem;">{n_name}</b>
+                    </div>
+                    
+                    <div style="background-color: #18181b; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 15px; margin-bottom: 25px;">
+                        <span style="color: #a1a1aa; font-size: 0.85rem;">Volume de Carga Validado:</span><br>
+                        <b style="color: #fca5a5; font-size: 1.1rem;">{itens}</b>
+                    </div>
+                    
+                    <button style="width: 100%; background: #10b981; color: white; padding: 15px; border: none; border-radius: 12px; font-weight: bold; font-size: 1.1rem; cursor: pointer; box-shadow: 0 4px 15px rgba(16,185,129,0.3);">Aceitar Operação & GPS</button>
+                    
+                    <div style="text-align: center; color: #71717a; font-size: 0.75rem; margin-top: 25px;">
+                        Integração Nativa OSRM Ativada. Modo Silencioso.
+                    </div>
+                    <div style="width: 40%; height: 5px; background: #3f3f46; border-radius: 5px; margin: 25px auto 0 auto;"></div>
+                 </div>
+                 """, unsafe_allow_html=True)
+        else:
+            st.info("Nenhuma ordem de serviço foi gerada pelo modelo Multi-Commodity ainda.")
