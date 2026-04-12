@@ -349,8 +349,8 @@ if not st.session_state["logged_in"]:
     <!-- TAG DO VIDEO MP4 E OVERLAY -->
     <div class="video-overlay"></div>
     <video autoplay loop muted playsinline class="video-background" id="bgVideo">
-        <!-- Vídeo rodoviário noturno sugerindo vias limpas e sistema 24/7 -->
-        <source src="https://videos.pexels.com/video-files/853889/853889-hd_1920_1080_25fps.mp4" type="video/mp4">
+        <!-- Vídeo de Mapas e Data Nodes Inteligentes (Redes de Inteligência Artificial) -->
+        <source src="https://cdn.pixabay.com/video/2020/05/25/40141-424754593_large.mp4" type="video/mp4">
     </video>
     """, unsafe_allow_html=True)
     
