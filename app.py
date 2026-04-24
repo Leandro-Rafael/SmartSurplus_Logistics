@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import folium
 from folium import plugins
@@ -8,1136 +7,981 @@ from streamlit_folium import st_folium
 import numpy as np
 import io
 import requests
-import base64
 import time
 import urllib.parse
 import streamlit.components.v1 as components
 
-# Nossos módulos
+st.set_page_config(
+    page_title="SmartSurplus",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+    page_icon="⬡"
+)
+
+# ── WATERMARK REMOVER ──
+components.html("""<script>
+const obs=new MutationObserver(()=>{
+  window.parent.document.querySelectorAll('[data-testid="main-menu-list"]').forEach(ul=>{
+    const d=ul.nextElementSibling;
+    if(d&&d.tagName==='DIV')d.style.setProperty('display','none','important');
+  });
+});
+obs.observe(window.parent.document.body,{childList:true,subtree:true});
+</script>""", height=0, width=0)
+
+# ── DRIVER APP ──
+if st.query_params.get("role") == "driver":
+    orig_name = st.query_params.get("orig", "Centro de Distribuição")
+    dest_name = st.query_params.get("dest", "ONG Solicitante")
+    carga_vol = st.query_params.get("carga", "Carga Validada")
+    st.markdown("""<style>
+    .stApp{background:#030712!important;}
+    section[data-testid="stSidebar"],header,footer{display:none!important;}
+    .block-container{padding-top:1rem!important;}
+    [data-testid="stButton"] button{background:#00ff88!important;color:#000!important;border-radius:8px!important;font-weight:700!important;border:none!important;}
+    </style>""", unsafe_allow_html=True)
+    st.markdown(f"""<div style="font-family:monospace;background:#030712;border:1px solid #1f2937;border-radius:24px;padding:28px;max-width:420px;margin:20px auto;">
+        <div style="text-align:center;color:#4b5563;font-size:.7rem;letter-spacing:3px;margin-bottom:28px;">SMARTSURPLUS // MOTORISTA</div>
+        <div style="background:#0f172a;border:1px solid #1e3a5f;border-radius:12px;padding:16px;margin-bottom:12px;">
+            <div style="color:#38bdf8;font-size:.65rem;letter-spacing:2px;margin-bottom:6px;">A — COLETA</div>
+            <div style="color:#f8fafc;font-size:1.05rem;font-weight:700;">{orig_name}</div>
+        </div>
+        <div style="text-align:center;color:#374151;padding:6px 0;">↓</div>
+        <div style="background:#0f172a;border:1px solid #14532d;border-radius:12px;padding:16px;margin-bottom:12px;">
+            <div style="color:#00ff88;font-size:.65rem;letter-spacing:2px;margin-bottom:6px;">B — ENTREGA</div>
+            <div style="color:#f8fafc;font-size:1.05rem;font-weight:700;">{dest_name}</div>
+        </div>
+        <div style="background:#1c1008;border:1px solid #78350f;border-radius:8px;padding:14px;margin-bottom:24px;">
+            <div style="color:#9ca3af;font-size:.7rem;">Carga Autorizada</div>
+            <div style="color:#fbbf24;font-size:1rem;font-weight:700;margin-top:4px;">{carga_vol}</div>
+        </div>
+    </div>""", unsafe_allow_html=True)
+    drive_state = st.session_state.get("drive_state", "pending")
+    _, col_d2, _ = st.columns([1,2,1])
+    with col_d2:
+        if drive_state == "pending":
+            if st.button("🚀 ACEITAR OPERAÇÃO", type="primary", use_container_width=True):
+                st.session_state["drive_state"] = "transit"; st.rerun()
+        elif drive_state == "transit":
+            st.success("🟢 EM TRÂNSITO — OSRM ATIVO")
+            if st.button("✅ CONFIRMAR ENTREGA", use_container_width=True):
+                st.session_state["drive_state"] = "completed"; st.rerun()
+        elif drive_state == "completed":
+            st.info("📦 Entrega registrada.")
+            if st.button("← Standby", use_container_width=True):
+                st.session_state["drive_state"] = "pending"; st.rerun()
+    st.stop()
+
+# ── IMPORTS ──
 from data_generator import generate_suppliers, generate_ngos, calculate_distance_matrix, haversine
 from optimization import run_optimization, simulate_current_scenario, apply_disaster_to_distances
 
 @st.cache_data(show_spinner=False)
 def geocode_address(address):
     try:
-        url = "https://nominatim.openstreetmap.org/search"
-        params = {"q": address, "format": "json", "limit": 1}
-        headers = {"User-Agent": "SmartSurplus_Logistics_App/1.0"}
-        response = requests.get(url, params=params, headers=headers, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            if data:
-                return float(data[0]["lat"]), float(data[0]["lon"])
-    except Exception:
-        pass
+        r = requests.get("https://nominatim.openstreetmap.org/search",
+            params={"q": address, "format": "json", "limit": 1},
+            headers={"User-Agent": "SmartSurplus/2.0"}, timeout=5)
+        if r.status_code == 200 and r.json():
+            d = r.json()[0]; return float(d["lat"]), float(d["lon"])
+    except: pass
     return None, None
 
 @st.cache_data(show_spinner=False)
-def get_osrm_route(start_lat, start_lon, end_lat, end_lon):
-    url = f"http://router.project-osrm.org/route/v1/driving/{start_lon},{start_lat};{end_lon},{end_lat}?overview=full&geometries=geojson"
-    for attempt in range(3):
+def get_osrm_route(slat, slon, nlat, nlon):
+    url = f"http://router.project-osrm.org/route/v1/driving/{slon},{slat};{nlon},{nlat}?overview=full&geometries=geojson"
+    for _ in range(3):
         try:
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("code") == "Ok":
-                    coords = data["routes"][0]["geometry"]["coordinates"]
-                    return [[lat, lon] for lon, lat in coords]
-            # Caso 429 (Too many requests), a API limitou. Aguarda meio segundo e retenta.
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200 and r.json().get("code") == "Ok":
+                return [[c[1],c[0]] for c in r.json()["routes"][0]["geometry"]["coordinates"]]
             time.sleep(0.5)
-        except Exception:
-            time.sleep(0.5)
-            pass
-    # Se falhar 3x, devolve linha-reta segura para não parar o mapa.
-    return [[start_lat, start_lon], [end_lat, end_lon]]
+        except: time.sleep(0.5)
+    return [[slat,slon],[nlat,nlon]]
 
-st.set_page_config(
-    page_title="SmartSurplus | ESG",
-    page_icon="❖",
-    layout="wide",
-    initial_sidebar_state="expanded",
-    menu_items={
-        'Get Help': None,
-        'Report a bug': None,
-        'About': "### SmartSurplus\n**ExpoTech 2026** - Motor Logístico de Inteligência Artificial para Otimização de Excedentes."
-    }
-)
-
-# Login State
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
 def enter_system():
     st.session_state["logged_in"] = True
 
-# --- EXTERMINADOR DE WATERMARKS (JavaScript Native Observer) ---
-# Fica sempre em vigília rastreando cliques que geram Popovers
-components.html("""
-<script>
-    const watcher = new MutationObserver(() => {
-        const menus = window.parent.document.querySelectorAll('[data-testid="main-menu-list"]');
-        menus.forEach(ul => {
-            const footerTrash = ul.nextElementSibling;
-            if(footerTrash && footerTrash.tagName.toLowerCase() === 'div') {
-                footerTrash.style.setProperty('display', 'none', 'important');
-            }
-        });
-    });
-    watcher.observe(window.parent.document.body, { childList: true, subtree: true });
-</script>
-""", height=0, width=0)
-
-# --- GLOBAL CSS (OPAL TADPOLE AESTHETICS) ---
-st.markdown("""
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-<style>
-    /* Global Typography & Animations */
-    * {
-        font-family: 'Inter', sans-serif;
-    }
-    
-    /* Esconde marca d'água do Streamlit no rodapé do site */
-    footer { visibility: hidden !important; }
-    
-    /* Esconde a marca d'água "Feito com Streamlit" de dentro do Menu de 3 Pontinhos! */
-    [data-testid="stPopoverContent"] ul + div { display: none !important; }
-    [data-testid="stPopoverContent"] > div > div:last-child { display: none !important; }
-    [data-testid="main-menu-list"] + div { display: none !important; }
-    
-    @keyframes slideUpFade {
-        0% { opacity: 0; transform: translateY(50px); }
-        100% { opacity: 1; transform: translateY(0); }
-    }
-    
-    .opal-animate {
-        animation: slideUpFade 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        opacity: 0; /* Ensures it stays hidden until JS/CSS engine computes */
-    }
-    .opal-delay-1 { animation-delay: 0.3s; }
-    .opal-delay-2 { animation-delay: 0.6s; }
-
-    /* Button "Pill" Overhaul globally */
-    [data-testid="stButton"] button {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        border-radius: 50px !important;
-        padding: 14px 38px !important;
-        border: none !important;
-        font-weight: 600 !important;
-        font-size: 1.1rem !important;
-        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease !important;
-        box-shadow: 0 4px 15px rgba(255,255,255,0.1);
-    }
-    [data-testid="stButton"] button:hover {
-        transform: scale(1.03) !important;
-        opacity: 0.8 !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
+# ═══════════════════════════════════════════════════════════
+# LANDING PAGE
+# ═══════════════════════════════════════════════════════════
 if not st.session_state["logged_in"]:
-    # -----------------------------------------------
-    # RICH LANDING PAGE (VITRINE CORPORATIVA)
-    # -----------------------------------------------
-    st.markdown("""
-        <style>
-        .stApp {
-            background-color: transparent !important;
-            background-image: none !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    
+
+    # Esconde tudo do Streamlit e zera padding
     st.markdown("""
     <style>
-        /* Desligando Menu Superior e Lateral de App */
-        .stAppHeader { display: none !important; }
-        [data-testid="collapsedControl"] { display: none !important; }
-        [data-testid="stSidebar"] { display: none !important; }
-        
-        /* Centralizando vertical e horizontalmente */
-        .block-container {
-            max-width: 1200px !important;
-            padding-top: 80px !important;
-            padding-bottom: 80px !important;
-        }
-
-        /* Hero Typography - Pure B&W Professional */
-        .opal-title {
-            font-family: 'Playfair Display', serif;
-            font-size: clamp(3rem, 6vw, 6rem);
-            font-weight: 700;
-            letter-spacing: -0.04em;
-            color: #ffffff;
-            line-height: 1.1;
-            margin-bottom: 25px;
-            text-align: center;
-            text-shadow: 0px 4px 60px rgba(255, 255, 255, 0.2);
-        }
-        
-        .opal-subtitle {
-            font-size: clamp(1.1rem, 1.8vw, 1.5rem);
-            font-weight: 300;
-            color: #a1a1aa;
-            letter-spacing: 0.02em;
-            margin-bottom: 40px;
-            max-width: 800px;
-            text-align: center;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        
-        /* Video Background */
-        .video-overlay {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.85));
-            z-index: -998;
-        }
-        .video-background {
-            position: fixed;
-            right: 0;
-            bottom: 0;
-            min-width: 100vw;
-            min-height: 100vh;
-            width: auto;
-            height: auto;
-            z-index: -999;
-            object-fit: cover;
-            filter: grayscale(100%);
-        }
-        
-        /* Grid Setup para Cartões de Altura Idêntica */
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 24px;
-            margin-bottom: 40px;
-            width: 100%;
-        }
-        
-        /* Feature Cards (Black & White Glassmorphism) */
-        .feature-card {
-            background: rgba(20, 20, 20, 0.4); /* Fundo mais transparente para vidro */
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 16px;
-            padding: 30px;
-            text-align: left;
-            transition: transform 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease;
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-        }
-        .feature-card:hover {
-            transform: translateY(-8px);
-            border-color: rgba(255, 255, 255, 0.8);
-            box-shadow: 0 10px 40px rgba(255, 255, 255, 0.1);
-        }
-        .feature-card h3 {
-            font-size: 1.3rem;
-            color: #ffffff;
-            margin-bottom: 12px;
-            font-family: 'Inter', sans-serif;
-            font-weight: 600;
-        }
-        .feature-card p {
-            font-size: 1rem;
-            color: #a1a1aa;
-            line-height: 1.6;
-        }
-        
-        /* Story Section - Manifesto Corporativo */
-        .story-section {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin: 100px auto;
-            max-width: 1000px;
-            padding: 20px;
-        }
-        
-        .story-text-container {
-            flex: 1;
-            padding: 0 40px;
-        }
-
-        .story-text-right {
-            border-left: 1px solid #333;
-        }
-
-        .story-title {
-            font-family: 'Playfair Display', serif;
-            font-size: 2.5rem;
-            color: #ffffff;
-            margin-bottom: 20px;
-            line-height: 1.2;
-        }
-
-        .story-paragraph {
-            font-size: 1.1rem;
-            color: #d4d4d8;
-            line-height: 1.8;
-            font-weight: 300;
-        }
-
-        .story-image-container {
-            flex: 1;
-            text-align: center;
-        }
-
-        .story-img {
-            max-width: 90%;
-            border-radius: 12px;
-            opacity: 0.9;
-        }
-
-        /* Scroll-driven Animations (CSS View Timeline) */
-        @supports (animation-timeline: view()) {
-            .slide-in-right {
-                animation: slideIn linear forwards;
-                animation-timeline: view();
-                animation-range: entry 10% cover 50%;
-            }
-            .fade-in-up {
-                animation: fadeUp linear forwards;
-                animation-timeline: view();
-                animation-range: entry 10% cover 40%;
-            }
-            .fade-in-up-1 {
-                animation: fadeUp linear forwards;
-                animation-timeline: view();
-                animation-range: entry 5% cover 25%;
-            }
-            .fade-in-up-2 {
-                animation: fadeUp linear forwards;
-                animation-timeline: view();
-                animation-range: entry 15% cover 35%;
-            }
-            .fade-in-up-3 {
-                animation: fadeUp linear forwards;
-                animation-timeline: view();
-                animation-range: entry 25% cover 45%;
-            }
-            .fade-in-up-4 {
-                animation: fadeUp linear forwards;
-                animation-timeline: view();
-                animation-range: entry 35% cover 55%;
-            }
-            .decrypt-on-scroll {
-                animation: decryptText linear forwards;
-                animation-timeline: view();
-                animation-range: entry 0% cover 50%;
-            }
-        }
-        
-        @keyframes slideIn {
-            0% { opacity: 0; transform: translateX(100px) scale(0.95); filter: blur(5px); }
-            100% { opacity: 1; transform: translateX(0) scale(1); filter: blur(0px); }
-        }
-
-        @keyframes fadeUp {
-            0% { opacity: 0; transform: translateY(80px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes decryptText {
-            0% { opacity: 0; filter: blur(20px); letter-spacing: 14px; transform: scale(0.9); }
-            45% { opacity: 0.6; filter: blur(6px); letter-spacing: 4px; color: #52525b; }
-            100% { opacity: 1; filter: blur(0px); letter-spacing: normal; transform: scale(1); color: #ffffff; }
-        }
-
-        /* --- MOBILE RESPONSIVE OVERRIDES --- */
-        @media (max-width: 768px) {
-            .opal-title { font-size: clamp(2rem, 10vw, 3rem) !important; }
-            .features-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
-            .story-section { flex-direction: column !important; margin: 60px auto !important; }
-            .story-text-container { padding: 0 15px !important; }
-            .story-text-right { border-left: none !important; border-top: 1px solid #333 !important; padding-top: 30px !important; margin-top: 30px !important; }
-            .story-image-container { margin-top: 40px !important; width: 100% !important; }
-            .story-img { width: 100% !important; }
-            .story-title { font-size: 2rem !important; }
-            /* Correção para as Tabelas não esmagarem as colunas no celular */
-            [data-testid="stDataFrame"] { width: 100% !important; overflow-x: auto !important; }
-        }
+    .stApp { background: #000 !important; }
+    .stAppHeader, [data-testid="collapsedControl"], [data-testid="stSidebar"] { display: none !important; }
+    footer { visibility: hidden !important; }
+    .block-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+    [data-testid="stVerticalBlock"] > div { padding: 0 !important; }
     </style>
-    
-    <!-- TAG DO VIDEO MP4 E OVERLAY -->
-    <div class="video-overlay"></div>
-    <video autoplay loop muted playsinline class="video-background" id="bgVideo">
-        <!-- Digital Nodes & Artificial Intelligence Map Networks -->
-        <source src="https://videos.pexels.com/video-files/3129957/3129957-hd_1920_1080_25fps.mp4" type="video/mp4">
-        <source src="https://videos.pexels.com/video-files/3129595/3129595-uhd_2560_1440_30fps.mp4" type="video/mp4">
-        <source src="https://videos.pexels.com/video-files/5182823/5182823-uhd_2160_4096_25fps.mp4" type="video/mp4">
-        <!-- Fallback final (Rodovia Noturna de Alta Fiabilidade) que estava funcionando antes -->
-        <source src="https://videos.pexels.com/video-files/853889/853889-hd_1920_1080_25fps.mp4" type="video/mp4">
-    </video>
     """, unsafe_allow_html=True)
-    
-    st.markdown("""
-        <div class="opal-animate opal-title">SmartSurplus.</div>
-        <div class="opal-animate opal-delay-1 opal-subtitle">
-            A beleza de escalar a doação e pulverizar o desperdício com precisão matemática.
-        </div>
-    """, unsafe_allow_html=True)
-    
-    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
-    with col_btn2:
-        st.markdown('<div class="opal-animate opal-delay-2" style="text-align: center;">', unsafe_allow_html=True)
-        st.button("Acessar o Painel Operacional", key="btn_top", type="primary", use_container_width=True, on_click=enter_system)
-        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    
-    # Trust Badges / Marcas
-    st.markdown('<div class="opal-animate opal-delay-1" style="text-align:center; color:#52525b; font-size:0.9rem; font-weight:600; letter-spacing:2px; text-transform:uppercase;">Motor Tecnológico e Chancelas de Mercado</div>', unsafe_allow_html=True)
-    st.markdown('<div class="opal-animate opal-delay-1" style="text-align:center; color:#71717a; font-size:1.2rem; margin-top:10px; font-weight:300;">OSRM Global Routing &nbsp;&nbsp; | &nbsp;&nbsp; PuLP Linear Optimization &nbsp;&nbsp; | &nbsp;&nbsp; ABRAS Metrics 2026</div>', unsafe_allow_html=True)
-    
-    st.markdown("<br><hr style='border-color: #27272a;'><br><br>", unsafe_allow_html=True)
-    
-    # 3 Features Grid NATIVO
-    st.markdown("""
-    <div class="features-grid opal-animate opal-delay-2">
-        <div class="feature-card">
-            <i class="material-icons" style="color: #ffffff; font-size: 40px; margin-bottom: 20px;">savings</i>
-            <br><h3>Despesa Operacional Zero</h3>
-            <p>Transformamos a quebra/perda operacional (1.8% padrão ABRAS) em uma malha de distribuição hiper-eficiente, passível de dedução de impostos federais.</p>
-        </div>
-        <div class="feature-card">
-            <i class="material-icons" style="color: #ffffff; font-size: 40px; margin-bottom: 20px;">public</i>
-            <br><h3>100% Impacto ESG</h3>
-            <p>Integramos ONGs carentes ao varejo em tempo real, roteirizando estoques excedentes perfeitos para garantir a segurança alimentar de comunidades.</p>
-        </div>
-        <div class="feature-card">
-            <i class="material-icons" style="color: #ffffff; font-size: 40px; margin-bottom: 20px;">route</i>
-            <br><h3>Previsão e Desvio IA</h3>
-            <p>Cálculo de Pesquisa Operacional conectado ao satélite. Simule interdições viárias e observe a matriz inteira se recalcular de forma autônoma.</p>
-        </div>
+    # Landing inteira em components.html para scroll/JS funcionar
+    components.html("""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Space+Grotesk:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;background:transparent;color:#fff;font-family:'Space Grotesk',sans-serif;overflow-x:hidden;}
+
+/* CURSOR */
+#cg{position:fixed;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(0,255,136,.12) 0%,rgba(0,255,136,.02) 40%,transparent 70%);pointer-events:none;z-index:9999;transform:translate(-50%,-50%);top:50%;left:50%;transition:left .08s ease-out,top .08s ease-out;mix-blend-mode:screen;}
+
+
+/* GLOBAL BACKGROUND */
+.global-bg { position: fixed; inset: 0; z-index: -5; background: #010503; overflow: hidden; perspective: 1200px; }
+.map-floor { position: absolute; top: -10%; left: -50%; width: 200%; height: 200%; background: url('https://upload.wikimedia.org/wikipedia/commons/e/ec/World_map_blank_without_borders.svg') no-repeat center center; background-size: cover; transform: rotateX(74deg); opacity: 0.15; filter: invert(1) sepia(1) hue-rotate(100deg) saturate(3) brightness(1.5); animation: panMap 50s alternate infinite ease-in-out; }
+.grid-floor { position: absolute; top: 10%; left: -50%; width: 200%; height: 150%; background-image: linear-gradient(rgba(0, 255, 136, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 136, 0.12) 1px, transparent 1px); background-size: 80px 80px; transform: rotateX(74deg); animation: gridScroll 6s linear infinite; mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 100%); -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 100%); }
+.beam { position:absolute; height:2px; filter:drop-shadow(0 0 10px #00ff88); background:linear-gradient(90deg,transparent,#00ff88,transparent); animation:rb 4s linear infinite; opacity:0; }
+.b1 { top:30%; left:-20%; transform:rotateX(74deg) rotateZ(30deg); width:400px; }
+.b2 { top:55%; left:-20%; transform:rotateX(74deg) rotateZ(-15deg); width:300px; animation-duration:6s; animation-delay:1.5s; }
+.b3 { top:80%; left:-20%; transform:rotateX(74deg) rotateZ(5deg); width:500px; animation-duration:5s; animation-delay:0.5s; }
+@keyframes panMap { 0% { transform: rotateX(74deg) translateY(-80px); } 100% { transform: rotateX(74deg) translateY(80px); } }
+@keyframes gridScroll { 0% { background-position: 0 0; } 100% { background-position: 0 80px; } }
+@keyframes rb { 0% { left: -30%; opacity: 0; } 10% { opacity:1; } 90% { opacity:1; } 100% { left: 120%; opacity: 0; } }
+
+/* LOGISTICS ROUTING NETWORK */
+.net-wrap{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;opacity:0.6;mask-image:radial-gradient(ellipse 70% 80% at 50% 50%,rgba(0,0,0,1) 0%,rgba(0,0,0,0) 100%);-webkit-mask-image:radial-gradient(ellipse 70% 80% at 50% 50%,rgba(0,0,0,1) 0%,rgba(0,0,0,0) 100%);}
+#net-canvas{display:block;width:100%;height:100%;}
+
+/* REAL MAP TEXTURE GLOBE */
+.real-globe-wrap { position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); width: 850px; height: 850px; z-index: 1; pointer-events: none; opacity: 0.45; mask-image: radial-gradient(circle 400px at var(--mx,50%) var(--my,50%), rgba(0,0,0,1) 0%, rgba(0,0,0,0.06) 100%); -webkit-mask-image: radial-gradient(circle 400px at var(--mx,50%) var(--my,50%), rgba(0,0,0,1) 0%, rgba(0,0,0,0.06) 100%); }
+.real-globe { width: 100%; height: 100%; border-radius: 50%; background-image: url('https://upload.wikimedia.org/wikipedia/commons/c/c3/Solarsystemscope_texture_2k_earth_nightmap.jpg'); background-size: auto 100%; background-repeat: repeat-x; animation: spinEarth 100s linear infinite; box-shadow: inset -60px -60px 100px rgba(0,0,0,0.95), inset 60px 60px 100px rgba(0,0,0,0.85), inset 0 0 40px rgba(0,255,136,0.3); filter: sepia(1) hue-rotate(100deg) saturate(2) brightness(0.7); }
+@keyframes spinEarth { from { background-position: 0 0; } to { background-position: 200% 0; } }
+
+/* SCANLINE */
+#sl{position:fixed;top:-2px;left:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,rgba(0,255,136,.3),transparent);z-index:9998;pointer-events:none;animation:scan 5s linear infinite;}
+@keyframes scan{from{top:-2px}to{top:100vh}}
+@keyframes spinR{from{transform:translate(-50%,-50%) rotateX(75deg) rotateY(-15deg) rotateZ(0deg);}to{transform:translate(-50%,-50%) rotateX(75deg) rotateY(-15deg) rotateZ(360deg);}}
+@keyframes floatP{0%,100%{transform:translateY(0);}50%{transform:translateY(-20px);}}
+
+/* HERO */
+.hero{position:relative;width:100%;height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden;background:transparent;}
+.hero-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.0;}
+.hero-vid iframe{width:120%;height:120%;position:absolute;top:-10%;left:-10%;pointer-events:none;filter:brightness(.28) saturate(.4);}
+.hero-ov{position:absolute;inset:0;background:radial-gradient(ellipse 80% 55% at 50% 40%,rgba(0,255,136,.05) 0%,transparent 65%),linear-gradient(to bottom,rgba(0,0,0,.1),rgba(0,0,0,.65));}
+.hero-c{position:relative;z-index:2;text-align:center;padding:0 24px;max-width:980px;margin:0 auto;}
+.eyebrow{font-family:'Space Mono',monospace;font-size:.7rem;letter-spacing:5px;color:#00ff88;text-transform:uppercase;margin-bottom:4px;opacity:0;animation:fu .9s .2s forwards;}
+.h1{font-family:'Syne',sans-serif;font-size:clamp(4rem,9vw,9rem);font-weight:800;line-height:.85;letter-spacing:-.05em;color:#fff;margin-bottom:0;opacity:0;animation:fu .9s .45s forwards;}
+.h1 .g{background:linear-gradient(110deg,#00ff88 15%,#0284c7 45%,#ffffff 50%,#0284c7 55%,#00ff88 85%);background-size:200% auto;color:transparent;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:shine 4s linear infinite;display:inline-block;}
+.h1 .sub{display:block;font-size:.40em;font-weight:400;color:rgba(255,255,255,.4);letter-spacing:-.01em;margin-top:10px;}
+.hsub{font-family:'Space Grotesk',sans-serif;font-size:clamp(1rem,1.8vw,1.25rem);color:rgba(255,255,255,.6);font-weight:300;max-width:560px;margin:20px auto 32px;line-height:1.6;opacity:0;animation:fu .9s .7s forwards;}
+.hero-btn{display:inline-block;border:1.5px solid rgba(255,255,255,.35);border-radius:50px;padding:17px 56px;font-family:'Space Mono',monospace;font-size:.78rem;letter-spacing:3px;color:#fff;cursor:pointer;background:rgba(255,255,255,.04);backdrop-filter:blur(12px);transition:all .35s ease;opacity:0;animation:fu .9s .95s forwards;}
+.hero-btn:hover{border-color:#00ff88;color:#00ff88;background:rgba(0,255,136,.08);box-shadow:0 0 60px rgba(0,255,136,.2);transform:translateY(-2px);}
+.scroll-hint{position:absolute;bottom:36px;left:0;width:100%;display:flex;flex-direction:column;align-items:center;gap:10px;opacity:0;animation:fu 1s 1.8s forwards;}
+.scroll-hint span{font-family:'Space Mono',monospace;font-size:.6rem;letter-spacing:3px;color:rgba(255,255,255,.22);}
+.scroll-line{width:1px;height:56px;background:linear-gradient(to bottom,#00ff88,transparent);animation:sp 2s ease-in-out infinite;}
+
+/* MARQUEE */
+.mq{overflow:hidden;border-top:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05);padding:22px 0;background:rgba(0,0,0,0.4);backdrop-filter:blur(10px);}
+.mq-track{display:flex;gap:40px;animation:mq 22s linear infinite;width:max-content;}
+.mq-item{font-family:'Space Mono',monospace;font-size:.65rem;letter-spacing:3px;color:rgba(255,255,255,.18);text-transform:uppercase;white-space:nowrap;}
+.dot{color:#00ff88;}
+@keyframes mq{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* COUNTERS */
+.counters{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:rgba(255,255,255,.06);max-width:960px;margin:80px auto;border-radius:4px;overflow:hidden;}
+.citem{background:rgba(0,0,0,0.4);backdrop-filter:blur(10px);padding:56px 32px;text-align:center;}
+.cnum{font-family:'Syne',sans-serif;font-size:clamp(2.5rem,5vw,5rem);font-weight:800;color:#fff;line-height:1;}
+.cnum .g{color:#00ff88;}
+.clabel{font-family:'Space Mono',monospace;font-size:.62rem;color:rgba(255,255,255,.28);letter-spacing:3px;text-transform:uppercase;margin-top:12px;}
+
+/* MANIFESTO */
+.manifesto{max-width:1100px;margin:0 auto;padding:80px 40px;}
+.m-ey{font-family:'Space Mono',monospace;font-size:.62rem;letter-spacing:4px;color:#00ff88;margin-bottom:20px;}
+.m-txt{font-family:'Syne',sans-serif;font-size:clamp(1.8rem,3.5vw,3.5rem);font-weight:800;line-height:1.15;letter-spacing:-.03em;margin-bottom:60px;}
+.m-txt .d{color:rgba(255,255,255,.18);}
+.m-txt .l{color:#fff;}
+.m-txt .g{color:#00ff88;}
+
+/* BENTO */
+.bento{max-width:1300px;margin:0 auto;padding:0 40px 100px;}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.card{background:#080808;border:1px solid rgba(255,255,255,.07);border-radius:18px;padding:36px;position:relative;overflow:hidden;transition:border-color .3s,transform .3s;}
+.card:hover{border-color:rgba(255,255,255,.18);transform:translateY(-4px);}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1.5px;background:linear-gradient(90deg,transparent,var(--c,#00ff88),transparent);opacity:0;transition:opacity .4s;}
+.card:hover::before{opacity:1;}
+.card.wide{grid-column:span 2;}
+.card-icon{font-size:1.8rem;margin-bottom:18px;display:block;}
+.card-title{font-family:'Syne',sans-serif;font-size:1.15rem;font-weight:700;color:#fff;margin-bottom:10px;}
+.card-desc{font-size:.88rem;color:rgba(255,255,255,.38);line-height:1.7;}
+.tag{display:inline-block;background:rgba(0,255,136,.07);border:1px solid rgba(0,255,136,.18);color:#00ff88;font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:2px;padding:4px 11px;border-radius:100px;margin-top:16px;}
+
+/* CTA */
+.cta{text-align:center;padding:80px 40px 40px;position:relative;overflow:hidden;}
+.cta-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;height:500px;background:radial-gradient(ellipse,rgba(0,255,136,.07) 0%,transparent 70%);pointer-events:none;}
+.cta-title{font-family:'Syne',sans-serif;font-size:clamp(2.5rem,5vw,5.5rem);font-weight:800;letter-spacing:-.04em;line-height:1;margin-bottom:20px;color:#fff;}
+.cta-sub{font-family:'Space Mono',monospace;font-size:.68rem;letter-spacing:3px;color:rgba(255,255,255,.28);margin-bottom:48px;}
+.cta-btn{display:inline-block;border:1.5px solid rgba(255,255,255,.35);border-radius:50px;padding:17px 56px;font-family:'Space Mono',monospace;font-size:.78rem;letter-spacing:3px;color:#fff;cursor:pointer;background:rgba(255,255,255,.04);backdrop-filter:blur(12px);transition:all .35s ease;}
+.cta-btn:hover{border-color:#00ff88;color:#00ff88;background:rgba(0,255,136,.08);box-shadow:0 0 60px rgba(0,255,136,.2);transform:translateY(-2px);}
+
+/* REVEAL */
+.rv{opacity:0;transform:translateY(32px);transition:opacity .9s ease,transform .9s ease;}
+.rv.on{opacity:1;transform:translateY(0);}
+.d1{transition-delay:.1s;}.d2{transition-delay:.2s;}.d3{transition-delay:.3s;}.d4{transition-delay:.4s;}.d5{transition-delay:.5s;}
+
+/* ANIMS */
+@keyframes fu{from{opacity:0;transform:translateY(36px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{text-shadow:0 0 30px rgba(0,255,136,.5)}50%{text-shadow:0 0 80px rgba(0,255,136,.9),0 0 120px rgba(0,255,136,.3)}}
+@keyframes shine{to{background-position:200% center;}}
+@keyframes sp{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .manifesto { padding: 60px 24px; }
+  .bento { padding: 0 24px 80px; }
+}
+@media (max-width: 600px) {
+  .counters { grid-template-columns: 1fr; margin: 40px 24px; }
+  .citem { padding: 36px 20px; }
+  .grid { grid-template-columns: 1fr; }
+  .card.wide { grid-column: span 1; }
+  .hero-vid iframe { width: 300%; height: 300%; top: -100%; left: -100%; }
+  .cta-title { font-size: 2.2rem; }
+  .h1 .sub { margin-top: 8px; }
+}
+</style>
+</head>
+<body>
+
+<div id="cg"></div>
+<div id="sl"></div>
+<div class="global-bg">
+  <div class="map-floor"></div>
+  <div class="grid-floor"></div>
+  <div class="beam b1"></div><div class="beam b2"></div><div class="beam b3"></div>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-vid">
+    <iframe src="https://www.youtube.com/embed/LmUsAFDfk6E?autoplay=1&mute=1&loop=1&playlist=LmUsAFDfk6E&controls=0&showinfo=0&rel=0&iv_load_policy=3&modestbranding=1&playsinline=1" frameborder="0" allow="autoplay;encrypted-media" allowfullscreen></iframe>
+  </div>
+  <div class="hero-ov"></div>
+  <div class="real-globe-wrap"><div class="real-globe"></div></div>
+  <div class="net-wrap">
+    <canvas id="net-canvas"></canvas>
+  </div>
+  <div class="hero-c">
+    <div class="eyebrow">// Logística Humanitária de Precisão — São Paulo, BR</div>
+    <h1 class="h1">Smart<span class="g">Surplus</span><span class="sub">Zero Waste Logistics Intelligence</span></h1>
+    <p class="hsub">Motor de otimização multi-commodity que converte o desperdício do varejo em segurança alimentar — com roteamento por satélite e IA preditiva.</p>
+    <button class="hero-btn" onclick="enterApp()">Acessar Plataforma →</button>
+  </div>
+  <div class="scroll-hint">
+    <div class="scroll-line"></div>
+    <span>scroll</span>
+  </div>
+</div>
+
+<!-- MARQUEE -->
+<div class="mq">
+  <div class="mq-track">
+    <span class="mq-item">Python PuLP</span><span class="dot">·</span>
+    <span class="mq-item">OSRM Satellite Routing</span><span class="dot">·</span>
+    <span class="mq-item">Multi-Commodity LP</span><span class="dot">·</span>
+    <span class="mq-item">Nominatim Geocoding</span><span class="dot">·</span>
+    <span class="mq-item">ESG Analytics</span><span class="dot">·</span>
+    <span class="mq-item">ABRAS 2026</span><span class="dot">·</span>
+    <span class="mq-item">Folium WebGIS</span><span class="dot">·</span>
+    <span class="mq-item">Zero Waste</span><span class="dot">·</span>
+    <span class="mq-item">Python PuLP</span><span class="dot">·</span>
+    <span class="mq-item">OSRM Satellite Routing</span><span class="dot">·</span>
+    <span class="mq-item">Multi-Commodity LP</span><span class="dot">·</span>
+    <span class="mq-item">Nominatim Geocoding</span><span class="dot">·</span>
+    <span class="mq-item">ESG Analytics</span><span class="dot">·</span>
+    <span class="mq-item">ABRAS 2026</span><span class="dot">·</span>
+    <span class="mq-item">Folium WebGIS</span><span class="dot">·</span>
+    <span class="mq-item">Zero Waste</span><span class="dot">·</span>
+  </div>
+</div>
+
+<!-- COUNTERS -->
+<div style="background:transparent;padding:0 40px;">
+<div class="counters">
+  <div class="citem rv">
+    <div class="cnum"><span class="g" data-count="1.8" data-float="1">0</span>%</div>
+    <div class="clabel">Perda média ABRAS no varejo</div>
+  </div>
+  <div class="citem rv d1">
+    <div class="cnum"><span class="g" data-count="2.5" data-float="1">0</span>×</div>
+    <div class="clabel">kg CO₂e por kg desperdiçado</div>
+  </div>
+  <div class="citem rv d2">
+    <div class="cnum"><span class="g" data-count="5" data-float="0">0</span></div>
+    <div class="clabel">Categorias otimizadas simultâneas</div>
+  </div>
+</div>
+</div>
+
+<!-- MANIFESTO -->
+<div class="manifesto" style="background:transparent;">
+  <div class="m-ey rv">// O Problema</div>
+  <div class="m-txt rv d1">
+    <span class="d">Todos os dias, toneladas de </span><span class="l">alimentos perfeitos</span>
+    <span class="d"> são descartadas por </span><span class="g">falhas logísticas.</span>
+    <span class="d"> Isso não é desperdício — é </span><span class="l">falta de inteligência</span>
+    <span class="d"> na malha de distribuição.</span>
+  </div>
+  <div class="m-ey rv d2">// A Solução</div>
+  <div class="m-txt rv d3">
+    <span class="l">SmartSurplus </span><span class="d">mapeia cada kg de sobra, calcula a demanda exata de ONGs e cria </span>
+    <span class="g">o traçado otimizado</span><span class="d"> — desviando até de bloqueios viários em tempo real.</span>
+  </div>
+</div>
+
+<!-- BENTO FEATURES -->
+<div class="bento" style="background:transparent;">
+  <div class="grid">
+    <div class="card wide rv" style="--c:#00ff88;">
+      <span class="card-icon">⬡</span>
+      <div class="card-title">Motor WebGIS Sandbox</div>
+      <div class="card-desc">Mapeamento com satélites OSRM e Nominatim. Adicione pontos por clique no mapa ou endereço de texto. Rotas rua a rua com AntPath animado sobre mapa dark de SP.</div>
+      <span class="tag">OSRM · FOLIUM · NOMINATIM</span>
     </div>
-    """, unsafe_allow_html=True)
+    <div class="card rv d1" style="--c:#38bdf8;">
+      <span class="card-icon">◈</span>
+      <div class="card-title">LP Multi-Commodity</div>
+      <div class="card-desc">PuLP roteiriza 5 categorias simultaneamente. Se uma ONG precisa de proteínas, a IA recusa enviar frutas.</div>
+      <span class="tag">PYTHON PULP</span>
+    </div>
+    <div class="card rv d2" style="--c:#ef4444;">
+      <span class="card-icon">⚠</span>
+      <div class="card-title">Engenharia de Desastres</div>
+      <div class="card-desc">Simule alagamentos. 30% da malha colapsa e o algoritmo recalcula toda a matriz automaticamente.</div>
+      <span class="tag">CEMADEN SIMULATION</span>
+    </div>
+    <div class="card rv d3" style="--c:#f59e0b;">
+      <span class="card-icon">◎</span>
+      <div class="card-title">Horizonte LSTM</div>
+      <div class="card-desc">Ajuste choques inflacionários e climáticos. Projeção de pico de desperdício com recomendação de frota.</div>
+      <span class="tag">PREDICTIVE AI</span>
+    </div>
+    <div class="card rv d4" style="--c:#a855f7;">
+      <span class="card-icon">📱</span>
+      <div class="card-title">App do Motorista</div>
+      <div class="card-desc">QR Code gera interface dedicada ao motorista. Arquitetura multi-tenant via query params em tempo real.</div>
+      <span class="tag">MULTI-TENANT</span>
+    </div>
+    <div class="card rv d5" style="--c:#00ff88;">
+      <span class="card-icon">🌿</span>
+      <div class="card-title">Certificado ESG</div>
+      <div class="card-desc">Gera certificado oficial com CO₂ evitado, árvores equivalentes e refeições. Pronto para auditoria.</div>
+      <span class="tag">ESG · CARBON CREDIT</span>
+    </div>
+  </div>
+</div>
 
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    
-    # --- NOVO ENREDO E MANIFESTO DE PRODUTO --- #
-    try:
-        def get_base64(bin_file):
-            import base64
-            with open(bin_file, 'rb') as f:
-                data = f.read()
-            return base64.b64encode(data).decode()
-        story_img = get_base64("assets/bw_smartsurplus_concept.png")
-    except:
-        story_img = ""
-        
-    st.markdown(f"""
-        <div class="story-section">
-            <div class="story-text-container decrypt-on-scroll">
-                <div class="story-title">O Desperdício Silencioso</div>
-                <div class="story-paragraph">
-                    Todos os dias, milhares de toneladas de alimentos em perfeito estado são descartadas 
-                    por imperfeições logísticas ou vencimentos de prateleira muito próximos. O mercado entende isso 
-                    como "Custo Fixo". Nós entendemos como falta de inteligência na malha de distribuição.
-                </div>
-            </div>
-            <div class="story-text-container story-text-right decrypt-on-scroll">
-                <div class="story-title">A Solução Agressiva</div>
-                <div class="story-paragraph">
-                    Criamos um motor de Pesquisa Operacional em Nuvem. O sistema mapeia cada quilograma de sobra 
-                    em toda a sua rede de centros e hipermercados, calcula a demanda exata de ONGs em tempo real 
-                    e cria o traçado otimizado, desviando até de bloqueios nas vias.
-                </div>
-            </div>
-        </div>
-        
-        <div class="story-section">
-            <div class="story-text-container">
-                <div class="story-title">Qual a origem do nome "SmartSurplus"?</div>
-                <div class="story-paragraph">
-                    <strong>Smart</strong>: Representa Inteligência Artificial em Roteirização. Não ligamos apenas o Ponto A ou B, nós prevemos gargalos logísticos no futuro utilizando Machine Learning e Redes Neurais Long Short-Term Memory.<br><br>
-                    <strong>Surplus</strong>: O "Excedente". Aquilo que sobrecarrega as planilhas contábeis mas que é o socorro necessário em comunidades de alta vulnerabilidade social. Onde há sobra contábil invisível, criamos valor real e imediato.
-                </div>
-            </div>
-            <div class="story-image-container">
-                <img src="data:image/png;base64,{story_img}" class="story-img slide-in-right" alt="SmartSurplus Concept">
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    
-    st.markdown("""
-<div style="max-width: 1000px; margin: 80px auto; padding: 20px;">
-<div class="opal-title" style="font-size: 2.5rem; text-align: left; margin-bottom: 10px;">Arquitetura Operacional</div>
-<div class="opal-subtitle" style="text-align: left; margin-left: 0; margin-bottom: 50px; max-width: 1000px;">Por que somos a solução ponta-a-ponta definitiva para logística humanitária preditiva:</div>
-<div class="features-grid" style="grid-template-columns: repeat(2, 1fr); gap: 30px;">
-<div class="feature-card fade-in-up-1" style="background: rgba(20,20,20,0.8);">
-<i class="material-icons" style="color: #38bdf8; font-size: 36px; margin-bottom: 15px;">map</i>
-<h3 style="color: #38bdf8;">I. Motor WebGIS Sandbox</h3>
-<p>Mapeamento de alta precisão conectado nativamente aos satélites OSRM e Nominatim. Construa pontos no mapa com cliques ou textos. O sistema rastreia as rotas por ruas precisas da malha rodoviária federal e estadual.</p>
+<!-- CTA BOTTOM -->
+<div class="cta" style="background:transparent;">
+  <div class="cta-glow"></div>
+  <div class="cta-title rv">Pronto para transformar<br>excedente em <span style="color:#00ff88;">impacto real?</span></div>
+  <div class="cta-sub rv d1">Plataforma operacional — sem instalação, sem fricção.</div>
+  <button class="cta-btn rv d2" onclick="enterApp()">Executar Plataforma →</button>
 </div>
-<div class="feature-card fade-in-up-2" style="background: rgba(20,20,20,0.8);">
-<i class="material-icons" style="color: #10b981; font-size: 36px; margin-bottom: 15px;">hub</i>
-<h3 style="color: #10b981;">II. Otimização LP Multi-Commodity</h3>
-<p>Diferente de sistemas rudimentares que cruzam apenas peso genérico, nosso algoritmo (Python PuLP) roteiriza 5 categorias de alimento simultaneamente. Se uma ONG precisa de proteínas, a IA se recusa a enviar frutas. Entrega zero-waste.</p>
-</div>
-<div class="feature-card fade-in-up-3" style="background: rgba(20,20,20,0.8);">
-<i class="material-icons" style="color: #ef4444; font-size: 36px; margin-bottom: 15px;">warning</i>
-<h3 style="color: #ef4444;">III. Engenharia de Desastres</h3>
-<p>Rastreia rupturas climáticas como alagamentos e bloqueios na via de suprimento. Acione o simulador e assista Zonas de Crise se formarem e dezenas de veículos alterarem suas rotas dinamicamente buscando veias secundárias mais rentáveis.</p>
-</div>
-<div class="feature-card fade-in-up-4" style="background: rgba(20,20,20,0.8);">
-<i class="material-icons" style="color: #eab308; font-size: 36px; margin-bottom: 15px;">query_stats</i>
-<h3 style="color: #eab308;">IV. Preditibilidade LSTM ao Vivo</h3>
-<p>A arquitetura de Machine Learning Long Short-Term Memory entende a flutuação macroeconômica. Ajuste parâmetros inflacionários ao vivo e observe a curva do gráfico se flexionar prevendo onde alocar capital em fretistas para evitar estrangulamento futuro.</p>
-</div>
-</div>
-</div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    
-    # Bottom CTA
-    st.markdown('<div class="opal-title" style="font-size: 3rem;">Pronto para transformar sua frota?</div>', unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
-    col_btnA, col_btnB, col_btnC = st.columns([1, 1, 1])
-    with col_btnB:
-        st.button("Executar Plataforma >", key="bottom_entry", type="primary", use_container_width=True, on_click=enter_system)
 
+<script>
+// CURSOR GLOW
+const cg = document.getElementById('cg');
+const gw = document.querySelector('.real-globe-wrap');
+const moveCg = e => { 
+  cg.style.left = e.clientX + 'px'; cg.style.top = e.clientY + 'px'; 
+  if(gw) {
+    const r = gw.getBoundingClientRect();
+    gw.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+    gw.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  }
+};
+document.addEventListener('mousemove', moveCg);
+try { window.parent.document.addEventListener('mousemove', moveCg); } catch(e) {}
 
-else:
-    # -----------------------------------------------
-    # MAIN APP (DASHBOARD OPERACIONAL) EM ZINC ESCURO (APPLE STYLE)
-    # -----------------------------------------------
+// FIX HERO HEIGHT TO viewport, avoiding 4800px vertical center
+try {
+  const h = Math.min(window.parent.innerHeight || window.innerHeight, 1200);
+  document.querySelectorAll('.hero').forEach(el => { el.style.height = h + 'px'; el.style.minHeight = h + 'px'; });
+} catch(e) { document.querySelectorAll('.hero').forEach(el => el.style.height = '800px'); }
+
+// PARALLAX HERO with Parent Scroll
+try {
+  window.parent.addEventListener('scroll', () => {
+    const sy = window.parent.scrollY;
+    const heroVid = document.querySelector('.hero-vid iframe');
+    const heroC   = document.querySelector('.hero-c');
+    if(heroVid) heroVid.style.transform = `translateY(${sy * .3}px)`;
+    if(heroC) {
+      heroC.style.transform = `translateY(${sy * .12}px)`;
+      heroC.style.opacity   = Math.max(0, 1 - sy / 500);
+    }
+  });
+} catch(e) {}
+
+// ANIM COUNTER
+function animCount(el) {
+  const target = parseFloat(el.dataset.count);
+  const isFloat = el.dataset.float === '1';
+  const dur = 1800; const t0 = performance.now();
+  function tick(now) {
+    const p = Math.min((now - t0) / dur, 1);
+    const e = 1 - Math.pow(1 - p, 3);
+    el.textContent = isFloat ? (e * target).toFixed(1) : Math.floor(e * target);
+    if (p < 1) requestAnimationFrame(tick);
+    else el.textContent = isFloat ? target.toFixed(1) : target;
+  }
+  requestAnimationFrame(tick);
+}
+
+// DYNAMIC TRIGGER ON OBSERVED PARENT SCREEN POSITION
+setInterval(() => {
+  try {
+    const pHeight = window.parent.innerHeight || 800;
+    const iframe = window.frameElement;
+    if(!iframe) {
+      document.querySelectorAll('.rv').forEach(el => el.classList.add('on'));
+      return;
+    }
+    const iframeTop = iframe.getBoundingClientRect().top;
+    
+    document.querySelectorAll('.rv:not(.on)').forEach(el => {
+      const elRect = el.getBoundingClientRect();
+      const absoluteTop = iframeTop + elRect.top;
+      if (absoluteTop < pHeight * 1.1) {
+        el.classList.add('on');
+        if(el.classList.contains('citem')) {
+           const countSpan = el.querySelector('[data-count]');
+           if(countSpan && !countSpan.dataset.st) {
+              countSpan.dataset.st = '1';
+              animCount(countSpan);
+           }
+        }
+      }
+    });
+  } catch(e) {
+    document.querySelectorAll('.rv:not(.on)').forEach(el => el.classList.add('on'));
+  }
+}, 100);
+
+// ENTRAR NO APP
+function enterApp() {
+  try {
+    const btns = window.parent.document.querySelectorAll('button');
+    for(const b of btns) {
+      if(b.innerText.trim().includes('ENTRAR')) { b.click(); return; }
+    }
+  } catch(e) {}
+}
+</script>
+<script>
+const ncvs = document.getElementById('net-canvas');
+const nctx = ncvs.getContext('2d');
+let cw, ch, hubs = [], pulses = [];
+
+function resizeNet() {
+  cw = ncvs.width = window.innerWidth;
+  ch = ncvs.height = window.innerHeight;
+  hubs = []; pulses = [];
+  const numHubs = Math.floor((cw * ch) / 16000);
+  for(let i=0; i<numHubs; i++) {
+    hubs.push({
+      x: Math.random() * cw, y: Math.random() * ch,
+      vx: (Math.random()-0.5)*0.2, vy: (Math.random()-0.5)*0.2,
+      r: Math.random() > 0.85 ? 3 : 1.5,
+      conns: []
+    });
+  }
+  for(let i=0; i<hubs.length; i++) {
+    for(let j=i+1; j<hubs.length; j++) {
+      const dx = hubs[i].x - hubs[j].x, dy = hubs[i].y - hubs[j].y;
+      if(dx*dx + dy*dy < 24000) hubs[i].conns.push(hubs[j]);
+    }
+  }
+}
+
+function animNet() {
+  requestAnimationFrame(animNet);
+  nctx.clearRect(0, 0, cw, ch);
+  for(const h of hubs) {
+    h.x += h.vx; h.y += h.vy;
+    if(h.x<0||h.x>cw) h.vx*=-1;
+    if(h.y<0||h.y>ch) h.vy*=-1;
+  }
+  nctx.lineWidth = 0.5;
+  for(const h of hubs) {
+    for(const c of h.conns) {
+      nctx.beginPath(); nctx.moveTo(h.x, h.y); nctx.lineTo(c.x, c.y);
+      nctx.strokeStyle = 'rgba(0,255,136,0.12)'; nctx.stroke();
+    }
+    if(h.conns.length > 0 && Math.random() < 0.005) {
+      pulses.push({ src: h, tgt: h.conns[Math.floor(Math.random()*h.conns.length)], p: 0, speed: 0.008 + Math.random()*0.01 });
+    }
+  }
+  for(const h of hubs) {
+    nctx.beginPath(); nctx.arc(h.x, h.y, h.r, 0, Math.PI*2);
+    nctx.fillStyle = h.r > 2 ? 'rgba(0,255,136,0.6)' : 'rgba(0,255,136,0.2)'; nctx.fill();
+  }
+  for(let i = pulses.length-1; i>=0; i--) {
+    const p = pulses[i]; p.p += p.speed;
+    if(p.p >= 1) { pulses.splice(i, 1); continue; }
+    const px = p.src.x + (p.tgt.x - p.src.x) * p.p, py = p.src.y + (p.tgt.y - p.src.y) * p.p;
+    nctx.beginPath(); nctx.arc(px, py, 1.5, 0, Math.PI*2);
+    nctx.fillStyle = '#fff'; nctx.shadowBlur = 8; nctx.shadowColor = '#00ff88'; nctx.fill(); nctx.shadowBlur = 0;
+  }
+}
+window.addEventListener('resize', resizeNet);
+try { window.parent.addEventListener('resize', resizeNet); } catch(e){}
+resizeNet();
+animNet();
+
+// AUTO RESIZE IFRAME HEIGHT TO REMOVE BLANK SPACE
+setInterval(() => {
+  try {
+    const h = document.querySelector('.cta').getBoundingClientRect().bottom;
+    if(window.frameElement) {
+      window.frameElement.style.height = h + 'px';
+    } else {
+      const iframes = window.parent.document.querySelectorAll('iframe');
+      iframes.forEach(f => {
+        if(f.style.height === '4800px' || f.style.height === '2400px' || f.getAttribute('height') === '4800' || f.getAttribute('height') === '2400') {
+          f.style.height = h + 'px';
+        }
+      });
+    }
+  } catch(e) {}
+}, 400);
+</script>
+</body>
+</html>
+    """, height=2400, scrolling=False)
+
+    # Botão Streamlit OCULTO — acionado pelo JS acima
     st.markdown("""
     <style>
-        .stApp { background-color: #09090b !important; } /* Um preto/chumbo sutil */
-        .stAppHeader { background-color: transparent !important; } /* Traz o menu hambúrguer de volta */
-        .stDeployButton { display: none !important; }
-        
-        /* Maximização de Tela (Puxando mapa pro teto) */
-        .block-container {
-            padding-top: 1.5rem !important; /* Puxa para o topo extremo */
-            padding-bottom: 2rem !important;
-            max-width: 98% !important; /* Estica lateralmente quase até a borda */
-        }
-        
-        h1, h2, h3, h4 { color: #ffffff !important; font-family: 'Inter', sans-serif !important; letter-spacing: -0.02em; }
-        p, span, div { font-family: 'Inter', sans-serif; color: #a1a1aa; }
-        
-        .metric-card {
-            background-color: #18181b;
-            padding: 24px;
-            border-radius: 16px;
-            border: 1px solid #27272a;
-            text-align: center;
-            transition: all 0.4s ease;
-            margin-bottom: 15px;
-        }
-        .metric-card:hover { border-color: #52525b; }
-        
-        .metric-value { font-size: 2.2rem; font-weight: 600; color: #ffffff; }
-        .metric-label { font-size: 0.9rem; color: #71717a; text-transform: uppercase; letter-spacing: 1px; }
-        .metric-diff-good { color: #10B981; font-weight: 600; font-size: 1.1rem; margin-top: 10px; }
-        
-        /* Tabs Premium Native */
-        button[data-baseweb="tab"] { font-size: 1rem !important; color: #71717a !important; font-weight: 400 !important; }
-        button[data-baseweb="tab"][aria-selected="true"] { color: #ffffff !important; font-weight: 600 !important; }
-        
-        div[data-baseweb="tab-highlight"] { background-color: #ffffff !important; height: 2px !important; }
-        
-        /* Remove Divider in sidebar */
-        [data-testid="stSidebar"] hr { border-color: #27272a; }
-        [data-testid="stSidebar"] { border-right: 1px solid #18181b; }
+    div[data-testid="stHorizontalBlock"] { display: none !important; }
+    </style>
+    """, unsafe_allow_html=True)
+    _, cb, _ = st.columns([1,1,1])
+    with cb:
+        if st.button("ENTRAR", key="enter_hidden", on_click=enter_system):
+            pass
+
+# ═══════════════════════════════════════════════════════════
+# DASHBOARD
+# ═══════════════════════════════════════════════════════════
+else:
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
+    .stApp { background: #050810 !important; }
+    .stAppHeader { background: transparent !important; }
+    .stDeployButton { display: none !important; }
+    footer { visibility: hidden !important; }
+    .block-container { padding-top: 1.2rem !important; padding-bottom: 2rem !important; max-width: 98% !important; }
+    * { font-family: 'Space Grotesk', sans-serif; }
+    .material-symbols-rounded { font-family: 'Material Symbols Rounded' !important; }
+    h1,h2,h3,h4 { font-family: 'Syne', sans-serif !important; color: #f9fafb !important; letter-spacing: -.02em !important; }
+
+    [data-testid="stSidebar"] { background: #03050e !important; border-right: 1px solid #0d1117 !important; }
+    [data-testid="stSidebar"] hr { border-color: #0d1117 !important; }
+    [data-testid="stSidebar"] label { color: #6b7280 !important; font-size: .82rem !important; }
+    [data-testid="stSidebar"] [data-testid="stNumberInput"] input::-webkit-inner-spin-button,
+    [data-testid="stSidebar"] [data-testid="stNumberInput"] input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    [data-testid="stSidebar"] [data-testid="stNumberInput"] input { -moz-appearance: textfield; }
+
+    .mc { background: #080d1a; border: 1px solid #0f1929; border-radius: 14px; padding: 20px; margin-bottom: 10px; position: relative; overflow: hidden; transition: border-color .3s; }
+    .mc:hover { border-color: #1e293b; }
+    .mc-bar { position: absolute; left: 0; top: 0; width: 3px; height: 100%; }
+    .mc-label { font-family: 'Space Mono', monospace !important; font-size: .6rem; color: #374151; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
+    .mc-value { font-family: 'Syne', sans-serif !important; font-size: 1.9rem; font-weight: 800; color: #f9fafb; line-height: 1; }
+    .mc-unit { font-size: .9rem; color: #374151; font-weight: 400; }
+    .mc-diff { font-family: 'Space Mono', monospace !important; font-size: .7rem; color: #00ff88; margin-top: 8px; font-weight: 700; }
+
+    button[data-baseweb="tab"] { font-family: 'Space Grotesk', sans-serif !important; font-size: .85rem !important; color: #374151 !important; font-weight: 500 !important; }
+    button[data-baseweb="tab"][aria-selected="true"] { color: #f9fafb !important; font-weight: 600 !important; }
+    div[data-baseweb="tab-highlight"] { background: #00ff88 !important; height: 2px !important; }
+    div[data-baseweb="tab-border"] { background: #0d1117 !important; }
+
+    [data-testid="stTextInput"] input { background: #080d1a !important; border: 1px solid #0f1929 !important; border-radius: 8px !important; color: #f9fafb !important; }
+    [data-testid="stNumberInput"] input { background: #080d1a !important; border: 1px solid #0f1929 !important; border-radius: 8px !important; color: #f9fafb !important; }
+    [data-testid="stRadio"] label { color: #9ca3af !important; }
+    [data-testid="stDataFrame"] { border: 1px solid #0f1929 !important; border-radius: 12px !important; }
+
+    [data-testid="stButton"] button { background: #00ff88 !important; color: #000 !important; border-radius: 8px !important; padding: 10px 20px !important; border: none !important; font-weight: 700 !important; font-size: .8rem !important; font-family: 'Space Mono', monospace !important; letter-spacing: 1px !important; transition: all .2s !important; }
+    [data-testid="stButton"] button:hover { background: #00cc6a !important; transform: translateY(-1px) !important; }
+
+    ::-webkit-scrollbar { width: 3px; height: 3px; }
+    ::-webkit-scrollbar-track { background: #050810; }
+    ::-webkit-scrollbar-thumb { background: #0f1929; border-radius: 2px; }
+
+    .slabel { font-family: 'Space Mono', monospace; font-size: .6rem; letter-spacing: 3px; color: #00ff88; text-transform: uppercase; margin-bottom: 4px; }
+    .stitle { font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 800; color: #f9fafb; margin-bottom: 16px; }
+    .d-alert { background: #120508; border: 1px solid #3f0f0f; border-left: 3px solid #ef4444; border-radius: 8px; padding: 12px 16px; color: #fca5a5; font-family: 'Space Mono', monospace; font-size: .7rem; letter-spacing: 1px; margin: 8px 0; }
+    .empty { text-align: center; padding: 60px 20px; }
+    .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .empty-title { font-family: 'Syne', sans-serif; font-size: 1.2rem; color: #4b5563; margin-bottom: 6px; }
+    .empty-sub { font-family: 'Space Mono', monospace; font-size: .72rem; letter-spacing: 1px; color: #374151; }
     </style>
     """, unsafe_allow_html=True)
 
-    # State Base for Manual Entries
     if "manual_suppliers" not in st.session_state:
-        st.session_state["manual_suppliers"] = pd.DataFrame(columns=["ID", "Nome", "Lat", "Lon", "Excedente_kg", "Categoria", "Inventario"])
+        st.session_state["manual_suppliers"] = pd.DataFrame(columns=["ID","Nome","Lat","Lon","Excedente_kg","Categoria","Inventario"])
     if "manual_ngos" not in st.session_state:
-        st.session_state["manual_ngos"] = pd.DataFrame(columns=["ID", "Nome", "Lat", "Lon", "Demanda_kg", "Categoria", "Inventario"])
-        
-    # Execução Lógica Centralizada
+        st.session_state["manual_ngos"] = pd.DataFrame(columns=["ID","Nome","Lat","Lon","Demanda_kg","Categoria","Inventario"])
+
     def handle_execution(disaster):
-        suppliers_df = st.session_state["manual_suppliers"]
-        ngos_df = st.session_state["manual_ngos"]
-        
-        if suppliers_df.empty or ngos_df.empty:
-            st.session_state["results"] = pd.DataFrame()
-            st.session_state["surplus_df"] = pd.DataFrame()
-            st.session_state["deficit_df"] = pd.DataFrame()
-            st.session_state["caos"] = {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Caotico': 0, 'Total_Transportado_kg': 0}
-            st.session_state["opt"] = {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Otimo': 0, 'Total_Transportado_kg': 0}
-            return
-            
-        dist_dict, _ = calculate_distance_matrix(suppliers_df, ngos_df)
-        
+        sup = st.session_state["manual_suppliers"]
+        ong = st.session_state["manual_ngos"]
+        e_c = {'Total_Desperdicio_kg':0,'Refeicoes_Geradas':0,'Custo_Logistico_Caotico':0,'Total_Transportado_kg':0}
+        e_o = {'Total_Desperdicio_kg':0,'Refeicoes_Geradas':0,'Custo_Logistico_Otimo':0,'Total_Transportado_kg':0,'Total_Fornecido_kg':0,'Total_Demanda_kg':0}
+        if sup.empty or ong.empty:
+            st.session_state.update({"results":pd.DataFrame(),"surplus_df":pd.DataFrame(),"deficit_df":pd.DataFrame(),"caos":e_c,"opt":e_o}); return
+        dist_dict, _ = calculate_distance_matrix(sup, ong)
         if disaster:
-            dist_dict, penalized_pairs = apply_disaster_to_distances(dist_dict)
-            if penalized_pairs:
-                first_pair = penalized_pairs[0]
-                s_coords = suppliers_df.set_index("ID")[["Lat", "Lon"]]
-                n_coords = ngos_df.set_index("ID")[["Lat", "Lon"]]
-                if first_pair[0] in s_coords.index and first_pair[1] in n_coords.index:
-                    st.session_state["crisis_route"] = [
-                        s_coords.loc[first_pair[0], "Lat"], s_coords.loc[first_pair[0], "Lon"],
-                        n_coords.loc[first_pair[1], "Lat"], n_coords.loc[first_pair[1], "Lon"]
-                    ]
+            dist_dict, pairs = apply_disaster_to_distances(dist_dict)
+            if pairs:
+                p = pairs[0]; sc = sup.set_index("ID")[["Lat","Lon"]]; nc = ong.set_index("ID")[["Lat","Lon"]]
+                if p[0] in sc.index and p[1] in nc.index:
+                    st.session_state["crisis_route"] = [sc.loc[p[0],"Lat"],sc.loc[p[0],"Lon"],nc.loc[p[1],"Lat"],nc.loc[p[1],"Lon"]]
         else:
             st.session_state["crisis_route"] = None
-            
-        caos_metrics = simulate_current_scenario(suppliers_df, ngos_df, dist_dict)
-        results_df, surplus_df, deficit_df, opt_metrics = run_optimization(suppliers_df, ngos_df, dist_dict)
-        
-        st.session_state["results"] = results_df
-        st.session_state["surplus_df"] = surplus_df
-        st.session_state["deficit_df"] = deficit_df
-        st.session_state["caos"] = caos_metrics
-        st.session_state["opt"] = opt_metrics
+        caos = simulate_current_scenario(sup, ong, dist_dict)
+        res, sur, dfc, opt = run_optimization(sup, ong, dist_dict)
+        st.session_state.update({"results":res,"surplus_df":sur,"deficit_df":dfc,"caos":caos,"opt":opt})
 
-    # SIDEBAR MINIMALISTA
-    st.sidebar.markdown("<h3 style='text-align:center; font-family: Playfair Display, serif;'>SmartSurplus</h3>", unsafe_allow_html=True)
-    st.sidebar.markdown("<br>", unsafe_allow_html=True)
-    
-    st.sidebar.markdown("**NOVO PONTO**")
-    input_mode = st.sidebar.radio("Modo de Inserção:", ["📍 Clique no Mapa", "📝 Endereço de Texto"], horizontal=True, label_visibility="collapsed")
-    
-    last_clicked = st.session_state.get("map_click_data", None)
-    
-    if input_mode == "📍 Clique no Mapa":
-        if last_clicked:
-            st.sidebar.success("📍 Marcador em posição.")
-            with st.sidebar.form("add_point"):
-                p_type = st.radio("Selecione a Entidade:", ["Supermercado (Oferece)", "ONG (Precisa)"])
-                p_name = st.text_input("Nome da Unidade:")
-                st.markdown("**Inventário Específico (Kg):**")
-                c1, c2 = st.columns(2)
-                with c1:
-                    kg_fru = st.number_input("Frutas", min_value=0, value=0)
-                    kg_lat = st.number_input("Laticínios", min_value=0, value=0)
-                    kg_pro = st.number_input("Proteínas", min_value=0, value=0)
-                with c2:
-                    kg_hor = st.number_input("Hortaliças", min_value=0, value=0)
-                    kg_sec = st.number_input("Secos e Grãos", min_value=0, value=0)
-                
-                if st.form_submit_button("Lançar na Malha"):
-                    lat, lon = last_clicked['lat'], last_clicked['lng']
-                    inventario = {}
-                    if kg_fru > 0: inventario["Frutas"] = kg_fru
-                    if kg_lat > 0: inventario["Laticínios"] = kg_lat
-                    if kg_pro > 0: inventario["Proteínas"] = kg_pro
-                    if kg_hor > 0: inventario["Hortaliças"] = kg_hor
-                    if kg_sec > 0: inventario["Secos e Grãos"] = kg_sec
-                    
-                    total_kg = sum(inventario.values())
-                    if total_kg == 0:
-                        st.error("Adicione carga em pelo menos uma categoria.")
-                    else:
-                        cat_str = ", ".join(inventario.keys())
-                        if "Supermercado" in p_type:
-                            new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
-                            new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": total_kg, "Categoria": cat_str, "Inventario": inventario}])
-                            st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
+    # ── SIDEBAR ──
+    with st.sidebar:
+        st.markdown("""<div style="padding:12px 0 16px;border-bottom:1px solid #0d1117;margin-bottom:16px;">
+          <div style="font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:800;color:#f9fafb;">SmartSurplus</div>
+          <div style="font-family:'Space Mono',monospace;font-size:.58rem;color:#00ff88;letter-spacing:3px;margin-top:2px;">LOGISTICS INTELLIGENCE</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown('<div class="slabel">Demo Rápido</div>', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1: n_sup = st.number_input("Mercados", min_value=1, max_value=15, value=5)
+        with c2: n_ong = st.number_input("ONGs", min_value=1, max_value=10, value=4)
+        if st.button("▶ Carregar Demo", use_container_width=True):
+            cats = ["Frutas","Laticínios","Proteínas","Hortaliças","Secos e Grãos"]
+            np.random.seed(42)
+            sup_d = generate_suppliers(n_sup); ong_d = generate_ngos(n_ong)
+            sup_rows = []
+            for _, r in sup_d.iterrows():
+                inv = {c: int(np.random.randint(20, max(21, int(r["Excedente_kg"]/2)))) for c in np.random.choice(cats, size=np.random.randint(2,5), replace=False)}
+                sup_rows.append({**r.to_dict(), "Inventario":inv, "Categoria":", ".join(inv.keys())})
+            ong_rows = []
+            for _, r in ong_d.iterrows():
+                inv = {c: int(np.random.randint(20, max(21, int(r["Demanda_kg"]/2)))) for c in np.random.choice(cats, size=np.random.randint(2,4), replace=False)}
+                ong_rows.append({**r.to_dict(), "Inventario":inv, "Categoria":", ".join(inv.keys())})
+            st.session_state["manual_suppliers"] = pd.DataFrame(sup_rows)
+            st.session_state["manual_ngos"]      = pd.DataFrame(ong_rows)
+            st.session_state.pop("ran", None)
+            st.toast("Demo carregado!", icon="✅"); st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<div class="slabel">Adicionar Ponto</div>', unsafe_allow_html=True)
+        input_mode = st.radio("", ["📍 Clique no Mapa", "📝 Por Endereço"], label_visibility="collapsed")
+        last_clicked = st.session_state.get("map_click_data", None)
+
+        if input_mode == "📍 Clique no Mapa":
+            if last_clicked:
+                st.success(f"📍 {last_clicked['lat']:.4f}, {last_clicked['lng']:.4f}")
+                with st.form("form_map"):
+                    p_type = st.selectbox("Tipo", ["🟢 Supermercado","🔵 ONG"])
+                    p_name = st.text_input("Nome")
+                    ca, cb = st.columns(2)
+                    with ca:
+                        kf=st.number_input("Frutas kg",0); kl=st.number_input("Laticínios kg",0); kp=st.number_input("Proteínas kg",0)
+                    with cb:
+                        kh=st.number_input("Hortaliças kg",0); ks=st.number_input("Secos kg",0)
+                    if st.form_submit_button("Lançar", use_container_width=True):
+                        lat,lon = last_clicked['lat'],last_clicked['lng']
+                        inv = {}
+                        if kf>0: inv["Frutas"]=kf
+                        if kl>0: inv["Laticínios"]=kl
+                        if kp>0: inv["Proteínas"]=kp
+                        if kh>0: inv["Hortaliças"]=kh
+                        if ks>0: inv["Secos e Grãos"]=ks
+                        total = sum(inv.values())
+                        if total==0: st.error("Adicione kg em pelo menos uma categoria.")
                         else:
-                            new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
-                            new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": total_kg, "Categoria": cat_str, "Inventario": inventario}])
-                            st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
-                        
-                        st.session_state["map_click_data"] = None 
-                        st.session_state["map_click_processed"] = last_clicked
-                        st.rerun()
-        else:
-            st.sidebar.info("👆 Clique livremente no mapa para pinar Supermercados ou ONGs.")
-    else:
-        st.sidebar.info("Digite o endereço exacto (Ex: Av. Paulista, 1000, Sao Paulo)")
-        with st.sidebar.form("add_point_address"):
-            p_address = st.text_input("Endereço Completo:")
-            p_type = st.radio("Selecione a Entidade:", ["Supermercado (Oferece)", "ONG (Precisa)"])
-            p_name = st.text_input("Nome da Unidade:")
-            st.markdown("**Inventário Específico (Kg):**")
-            c1, c2 = st.columns(2)
-            with c1:
-                kg_fru = st.number_input("Frutas", min_value=0, value=0)
-                kg_lat = st.number_input("Laticínios", min_value=0, value=0)
-                kg_pro = st.number_input("Proteínas", min_value=0, value=0)
-            with c2:
-                kg_hor = st.number_input("Hortaliças", min_value=0, value=0)
-                kg_sec = st.number_input("Secos e Grãos", min_value=0, value=0)
-            
-            if st.form_submit_button("Geolocalizar e Lançar"):
-                if not p_address.strip():
-                    st.error("Preencha o campo de endereço.")
-                else:
-                    inventario = {}
-                    if kg_fru > 0: inventario["Frutas"] = kg_fru
-                    if kg_lat > 0: inventario["Laticínios"] = kg_lat
-                    if kg_pro > 0: inventario["Proteínas"] = kg_pro
-                    if kg_hor > 0: inventario["Hortaliças"] = kg_hor
-                    if kg_sec > 0: inventario["Secos e Grãos"] = kg_sec
-                    total_kg = sum(inventario.values())
-                    
-                    if total_kg == 0:
-                        st.error("Adicione carga em pelo menos uma categoria.")
-                    else:
-                        lat, lon = geocode_address(p_address)
-                        if lat is not None and lon is not None:
-                            cat_str = ", ".join(inventario.keys())
+                            cat_str = ", ".join(inv.keys())
                             if "Supermercado" in p_type:
-                                new_id = f"S{len(st.session_state['manual_suppliers']) + 1}"
-                                new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Excedente_kg": total_kg, "Categoria": cat_str, "Inventario": inventario}])
-                                st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], new_row], ignore_index=True)
+                                nid = f"S{len(st.session_state['manual_suppliers'])+1}"
+                                st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], pd.DataFrame([{"ID":nid,"Nome":p_name or nid,"Lat":lat,"Lon":lon,"Excedente_kg":total,"Categoria":cat_str,"Inventario":inv}])], ignore_index=True)
                             else:
-                                new_id = f"O{len(st.session_state['manual_ngos']) + 1}"
-                                new_row = pd.DataFrame([{"ID": new_id, "Nome": p_name or new_id, "Lat": lat, "Lon": lon, "Demanda_kg": total_kg, "Categoria": cat_str, "Inventario": inventario}])
-                                st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], new_row], ignore_index=True)
-                            st.session_state["map_click_data"] = None 
+                                nid = f"O{len(st.session_state['manual_ngos'])+1}"
+                                st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], pd.DataFrame([{"ID":nid,"Nome":p_name or nid,"Lat":lat,"Lon":lon,"Demanda_kg":total,"Categoria":cat_str,"Inventario":inv}])], ignore_index=True)
+                            st.session_state["map_click_data"] = None
+                            st.session_state["map_click_processed"] = last_clicked
                             st.rerun()
+            else:
+                st.info("👆 Clique no mapa para posicionar.")
+        else:
+            with st.form("form_addr"):
+                p_addr = st.text_input("Endereço", placeholder="Av. Paulista, 1000, SP")
+                p_type = st.selectbox("Tipo", ["🟢 Supermercado","🔵 ONG"])
+                p_name = st.text_input("Nome")
+                ca, cb = st.columns(2)
+                with ca:
+                    kf=st.number_input("Frutas kg",0); kl=st.number_input("Laticínios kg",0); kp=st.number_input("Proteínas kg",0)
+                with cb:
+                    kh=st.number_input("Hortaliças kg",0); ks=st.number_input("Secos kg",0)
+                if st.form_submit_button("Geolocalizar e Lançar", use_container_width=True):
+                    if not p_addr.strip(): st.error("Preencha o endereço.")
+                    else:
+                        inv = {}
+                        if kf>0: inv["Frutas"]=kf
+                        if kl>0: inv["Laticínios"]=kl
+                        if kp>0: inv["Proteínas"]=kp
+                        if kh>0: inv["Hortaliças"]=kh
+                        if ks>0: inv["Secos e Grãos"]=ks
+                        total = sum(inv.values())
+                        if total==0: st.error("Adicione kg em pelo menos uma categoria.")
                         else:
-                            st.error("Endereço não localizado pelo satélite.")
-        
-    st.sidebar.markdown("<hr style='opacity:0.2'>", unsafe_allow_html=True)
-    st.sidebar.markdown("**ENGENHARIA REVERSA**")
-    disaster_mode = st.sidebar.toggle("Bloqueio Simulado (Crise Viária)")
-    if disaster_mode:
-        st.sidebar.error("30% da malha sofreu colapso.")
-        
-    st.sidebar.markdown("<hr style='opacity:0.2'>", unsafe_allow_html=True)
-    st.sidebar.markdown("**RENDERIZAÇÃO OSRM**")
-    mode_route = st.sidebar.radio("Polígonos de Rota:", ["Nativa (Linha Direta)", "Satélite (GPS Real)"])
+                            lat, lon = geocode_address(p_addr)
+                            if lat:
+                                cat_str = ", ".join(inv.keys())
+                                if "Supermercado" in p_type:
+                                    nid = f"S{len(st.session_state['manual_suppliers'])+1}"
+                                    st.session_state["manual_suppliers"] = pd.concat([st.session_state["manual_suppliers"], pd.DataFrame([{"ID":nid,"Nome":p_name or nid,"Lat":lat,"Lon":lon,"Excedente_kg":total,"Categoria":cat_str,"Inventario":inv}])], ignore_index=True)
+                                else:
+                                    nid = f"O{len(st.session_state['manual_ngos'])+1}"
+                                    st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], pd.DataFrame([{"ID":nid,"Nome":p_name or nid,"Lat":lat,"Lon":lon,"Demanda_kg":total,"Categoria":cat_str,"Inventario":inv}])], ignore_index=True)
+                                st.rerun()
+                            else: st.error("Endereço não localizado.")
 
-    st.sidebar.markdown("<br>", unsafe_allow_html=True)
-    if st.sidebar.button("Recalcular IA de Otimização", type="primary", use_container_width=True):
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<div class="slabel">Configurações</div>', unsafe_allow_html=True)
+        disaster_mode = st.toggle("⚠ Simular Crise Viária", value=False)
         if disaster_mode:
-            st.toast("CEMADEN: Vias submersas detectadas. Recalculando Tensor...", icon="⚠️")
-        with st.spinner("Processando Matrizes Espaciais..."):
-            handle_execution(disaster_mode)
-            
-    # Auto-Execute no Login
+            st.markdown('<div class="d-alert">CEMADEN: 30% da malha colapsada.</div>', unsafe_allow_html=True)
+        mode_route = st.radio("Rotas:", ["Linha Direta","GPS Real (OSRM)"], horizontal=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("⬡ Recalcular Otimização", type="primary", use_container_width=True):
+            if disaster_mode: st.toast("CEMADEN: Vias submersas. Recalculando...", icon="⚠️")
+            with st.spinner("Processando..."): handle_execution(disaster_mode)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🗑 Limpar Malha", use_container_width=True):
+            st.session_state["manual_suppliers"] = pd.DataFrame(columns=["ID","Nome","Lat","Lon","Excedente_kg","Categoria","Inventario"])
+            st.session_state["manual_ngos"]      = pd.DataFrame(columns=["ID","Nome","Lat","Lon","Demanda_kg","Categoria","Inventario"])
+            for k in ["results","surplus_df","deficit_df","ran"]: st.session_state.pop(k,None)
+            st.rerun()
+
     if "ran" not in st.session_state:
         st.session_state["ran"] = True
-        handle_execution(disaster_mode)
+        handle_execution(False)
 
-    # HEADER INTERNO
-    st.markdown("<h2 style='color: #ffffff;'>Analytics</h2>", unsafe_allow_html=True)
-    
-    # TABS PREMIUM
-    tab1, tab2, tab4, tab5, tab3, tab6 = st.tabs(["Overview", "Despachos", "Déficit das ONGs", "Estoque Remanescente", "Predictive Horizon", "📱 Motorista WebApp"])
+    suppliers_df = st.session_state["manual_suppliers"]
+    ngos_df      = st.session_state["manual_ngos"]
+    results_df   = st.session_state.get("results", pd.DataFrame())
+    caos = st.session_state.get("caos", {'Total_Desperdicio_kg':0,'Refeicoes_Geradas':0,'Custo_Logistico_Caotico':0,'Total_Transportado_kg':0})
+    opt  = st.session_state.get("opt",  {'Total_Desperdicio_kg':0,'Refeicoes_Geradas':0,'Custo_Logistico_Otimo':0,'Total_Transportado_kg':0,'Total_Fornecido_kg':0,'Total_Demanda_kg':0})
+
+    co2=opt['Total_Transportado_kg']*2.5; arv=int(co2/21)
+    dw=((caos['Total_Desperdicio_kg']-opt['Total_Desperdicio_kg'])/max(1,caos['Total_Desperdicio_kg']))*100
+    dref=opt['Refeicoes_Geradas']-caos['Refeicoes_Geradas']
+    cc_=caos["Custo_Logistico_Caotico"]/max(1,caos["Total_Transportado_kg"])
+    co_=opt["Custo_Logistico_Otimo"]/max(1,opt["Total_Transportado_kg"])
+    pck=(1-(co_/max(0.01,cc_)))*100
+
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #0d1117;">
+      <div>
+        <div style="font-family:'Space Mono',monospace;font-size:.58rem;color:#00ff88;letter-spacing:3px;text-transform:uppercase;">// Painel Operacional</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:#f9fafb;line-height:1.1;margin-top:2px;">Analytics Central</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <div style="background:#041a0f;border:1px solid #0a3d1f;border-radius:8px;padding:8px 14px;text-align:center;">
+          <div style="font-family:'Space Mono',monospace;font-size:1rem;font-weight:700;color:#00ff88;">{len(suppliers_df)}</div>
+          <div style="font-family:'Space Mono',monospace;font-size:.55rem;color:#374151;letter-spacing:1px;">MERCADOS</div>
+        </div>
+        <div style="background:#060d1c;border:1px solid #0e1f40;border-radius:8px;padding:8px 14px;text-align:center;">
+          <div style="font-family:'Space Mono',monospace;font-size:1rem;font-weight:700;color:#38bdf8;">{len(ngos_df)}</div>
+          <div style="font-family:'Space Mono',monospace;font-size:.55rem;color:#374151;letter-spacing:1px;">ONGS</div>
+        </div>
+        <div style="background:#060d1c;border:1px solid #0e1f40;border-radius:8px;padding:8px 14px;text-align:center;">
+          <div style="font-family:'Space Mono',monospace;font-size:1rem;font-weight:700;color:#f59e0b;">{len(results_df)}</div>
+          <div style="font-family:'Space Mono',monospace;font-size:.55rem;color:#374151;letter-spacing:1px;">ROTAS</div>
+        </div>
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs(["🗺 Mapa & Overview","📦 Despachos","📉 Déficit ONGs","📊 Estoque","🔮 Previsão IA","📱 App Motorista"])
 
     with tab1:
-        suppliers_df = st.session_state["manual_suppliers"]
-        ngos_df = st.session_state["manual_ngos"]
-        results_df = st.session_state.get("results", pd.DataFrame())
-        caos = st.session_state.get("caos", {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Caotico': 0, 'Total_Transportado_kg': 0})
-        opt = st.session_state.get("opt", {'Total_Desperdicio_kg': 0, 'Refeicoes_Geradas': 0, 'Custo_Logistico_Otimo': 0, 'Total_Transportado_kg': 0})
+        c1,c2,c3,c4 = st.columns(4)
+        with c1: st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#ef4444;"></div><div class="mc-label">Desperdício Líquido</div><div class="mc-value">{opt["Total_Desperdicio_kg"]:.0f}<span class="mc-unit"> kg</span></div><div class="mc-diff">↓ {dw:.1f}% vs manual</div></div>', unsafe_allow_html=True)
+        with c2: st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#38bdf8;"></div><div class="mc-label">Refeições Geradas</div><div class="mc-value">{opt["Refeicoes_Geradas"]}<span class="mc-unit"> ref.</span></div><div class="mc-diff">+{dref} a mais que caótico</div></div>', unsafe_allow_html=True)
+        with c3: st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#f59e0b;"></div><div class="mc-label">Custo / kg</div><div class="mc-value">R${co_:.2f}</div><div class="mc-diff">↓ {pck:.1f}% de eficiência</div></div>', unsafe_allow_html=True)
+        with c4: st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#00ff88;"></div><div class="mc-label">Crédito ESG</div><div class="mc-value">{co2:.0f}<span class="mc-unit"> kg CO₂</span></div><div class="mc-diff">≈ {arv} árvores/ano</div></div>', unsafe_allow_html=True)
 
-        col1, col2, col3, col_esg = st.columns(4)
-        diff_desperdicio = ((caos['Total_Desperdicio_kg'] - opt['Total_Desperdicio_kg']) / max(1, caos['Total_Desperdicio_kg'])) * 100
-        diff_ref = opt['Refeicoes_Geradas'] - caos['Refeicoes_Geradas']
-        
-        custo_caos_por_kg = caos["Custo_Logistico_Caotico"] / max(1, caos["Total_Transportado_kg"])
-        custo_opt_por_kg = opt["Custo_Logistico_Otimo"] / max(1, opt["Total_Transportado_kg"])
-        perc_custo_kg = (1 - (custo_opt_por_kg / max(0.01, custo_caos_por_kg))) * 100
-        
-        # Matematica ESG (1kg waste ~ 2.5kg CO2e. 1 tree ~ 21kg CO2/year)
-        co2_evitado = opt['Total_Transportado_kg'] * 2.5
-        arvores = int(co2_evitado / 21)
-        
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Desperdício Líquido</div>
-                <div class="metric-value">{opt['Total_Desperdicio_kg']} kg</div>
-                <div class="metric-diff-good">-{diff_desperdicio:.1f}% vs Humano</div>
-            </div>
-            """, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_graf, col_mapa = st.columns([1, 2.2])
 
-        with col2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Impacto Alimentar</div>
-                <div class="metric-value">{opt['Refeicoes_Geradas']}</div>
-                <div class="metric-diff-good">+ {diff_ref} Pessoas</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with col3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Eficiência Monetária</div>
-                <div class="metric-value">R$ {custo_opt_por_kg:.2f}</div>
-                <div class="metric-diff-good">-{perc_custo_kg:.1f}% Emissão CPO</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with col_esg:
-            st.markdown(f"""
-            <div class="metric-card" style="border-left: 4px solid #10b981;">
-                <div class="metric-label" style="color: #10b981;">Crédito de Carbono ESG</div>
-                <div class="metric-value">{co2_evitado:.1f} kg</div>
-                <div class="metric-diff-good" style="color:#10b981;">🌲 Equivale a {arvores} Árvores Salvas</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        st.markdown("<br>", unsafe_allow_html=True)
-        cert_html = f"""
-        <html><body style="font-family: Arial, sans-serif; padding: 50px; border: 10px solid #10b981; max-width: 800px; margin: auto; text-align: center;">
-        <h1 style="color: #10b981;">Certificado Oficial de Impacto Ambiental ESG</h1>
-        <h2>Plataforma LOGÍSTICA Inteligente SmartSurplus</h2>
-        <p style="font-size: 1.2rem; text-align: left; padding: 20px;">Atestamos formal e matematicamente que o algoritmo de Roteirização Multi-Commodity otimizou o direcionamento de donativos nesta data, neutralizando cadeias de desperdício alimentar.</p>
-        <div style="background: #f4f4f5; padding: 20px; border-radius: 10px; text-align: left; font-size: 1.2rem;">
-            <b>Gás Estufa (CO2e) não gerado:</b> {co2_evitado:.1f} Kg<br>
-            <b>Beneficiários Alimentados:</b> {opt['Refeicoes_Geradas']} Pessoas<br>
-            <b>Equivalência de Absorção:</b> O plantio de {arvores} árvores adultas trabalhando 1 ano.<br>
-        </div>
-        <p><i>Documento Auditável via Logística OSRM Satélite - {time.strftime('%Y')}</i></p>
-        </body></html>
-        """
-        
-        c1, c2, c3 = st.columns([1, 2, 1])
-        with c2:
-            st.download_button(
-                label="📁 Emitir Alvará Oficial ESG (.html)",
-                data=cert_html,
-                file_name="Certificado_ESG_SmartSurplus.html",
-                mime="text/html",
-                use_container_width=True
-            )
-            
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # MAPA FOLIUM
-        if not suppliers_df.empty or not ngos_df.empty:
-            all_lats = pd.concat([suppliers_df['Lat'] if not suppliers_df.empty else pd.Series(), ngos_df['Lat'] if not ngos_df.empty else pd.Series()])
-            all_lons = pd.concat([suppliers_df['Lon'] if not suppliers_df.empty else pd.Series(), ngos_df['Lon'] if not ngos_df.empty else pd.Series()])
-            center_lat, center_lon = all_lats.mean(), all_lons.mean()
-        else:
-            center_lat, center_lon = -23.5505, -46.6333 # SP Default Default zero map
-            
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=11, tiles="CartoDB dark_matter")
-        
-        # Desenhar ZONA DE CRISE se ativado
-        if disaster_mode and not suppliers_df.empty and not ngos_df.empty:
-            c_route = st.session_state.get("crisis_route")
-            
-            if c_route and mode_route == "Satélite (GPS Real)":
-                crisis_path = get_osrm_route(c_route[0], c_route[1], c_route[2], c_route[3])
-                if crisis_path and len(crisis_path) > 0:
-                    folium.PolyLine(
-                        locations=crisis_path,
-                        color="#EF4444",
-                        weight=6,
-                        opacity=0.8,
-                        tooltip="Via Física Bloqueada"
-                    ).add_to(m)
-                    mid_idx = len(crisis_path) // 2
-                    crisis_lat, crisis_lon = crisis_path[mid_idx]
-                else:
-                    crisis_lat = (c_route[0] + c_route[2]) / 2
-                    crisis_lon = (c_route[1] + c_route[3]) / 2
-            elif c_route:
-                crisis_path = [[c_route[0], c_route[1]], [c_route[2], c_route[3]]]
-                folium.PolyLine(
-                    locations=crisis_path,
-                    color="#EF4444",
-                    weight=6,
-                    opacity=0.8,
-                    dash_array="10",
-                    tooltip="Linha Direta Interditada"
-                ).add_to(m)
-                crisis_lat = (c_route[0] + c_route[2]) / 2
-                crisis_lon = (c_route[1] + c_route[3]) / 2
+        with col_graf:
+            if opt['Total_Transportado_kg'] > 0:
+                fig = go.Figure()
+                fig.add_trace(go.Bar(name='Manual',x=['Entregue','Perdido'],y=[caos['Total_Transportado_kg'],caos['Total_Desperdicio_kg']],marker_color=['#1f2937','#111827'],text=[f"{caos['Total_Transportado_kg']:.0f}",f"{caos['Total_Desperdicio_kg']:.0f}"],textposition='outside',textfont=dict(color='#4b5563',size=10)))
+                fig.add_trace(go.Bar(name='SmartSurplus',x=['Entregue','Perdido'],y=[opt['Total_Transportado_kg'],opt['Total_Desperdicio_kg']],marker_color=['#00ff88','#052e16'],text=[f"{opt['Total_Transportado_kg']:.0f}",f"{opt['Total_Desperdicio_kg']:.0f}"],textposition='outside',textfont=dict(color='#f9fafb',size=10)))
+                fig.update_layout(barmode='group',plot_bgcolor='rgba(0,0,0,0)',paper_bgcolor='rgba(0,0,0,0)',font=dict(color='#4b5563',family='Space Grotesk'),title=dict(text='Manual vs IA',font=dict(size=12,color='#f9fafb',family='Syne')),legend=dict(orientation='h',y=-0.3,font=dict(color='#6b7280',size=10)),margin=dict(l=0,r=0,t=36,b=0),xaxis=dict(gridcolor='#0d1117'),yaxis=dict(gridcolor='#0d1117'),height=220)
+                st.plotly_chart(fig, use_container_width=True)
+                fig2 = go.Figure(go.Pie(labels=['CO₂ Evitado','Restante'],values=[min(co2,1000),max(0,1000-co2)],hole=.75,marker=dict(colors=['#00ff88','#050810']),textinfo='none'))
+                fig2.update_layout(plot_bgcolor='rgba(0,0,0,0)',paper_bgcolor='rgba(0,0,0,0)',title=dict(text='ESG Carbon',font=dict(size=12,color='#f9fafb',family='Syne')),showlegend=False,margin=dict(l=0,r=0,t=36,b=0),height=180,annotations=[dict(text=f'<b>{co2:.0f}</b>',x=.5,y=.5,font=dict(size=20,color='#00ff88',family='Syne'),showarrow=False)])
+                st.plotly_chart(fig2, use_container_width=True)
+                cert = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{{background:#030712;color:#f9fafb;font-family:monospace;padding:60px;}}
+.w{{border:1px solid #1f2937;border-radius:20px;padding:60px;max-width:780px;margin:0 auto;}}
+.top{{height:2px;background:linear-gradient(90deg,transparent,#00ff88,transparent);margin-bottom:40px;}}
+.ey{{font-size:.65rem;letter-spacing:4px;color:#00ff88;margin-bottom:20px;}}
+h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
+.g{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:32px 0;}}
+.k{{background:#0a0f1a;border:1px solid #1f2937;border-radius:12px;padding:24px;}}
+.kv{{font-size:1.8rem;font-weight:700;color:#00ff88;}}
+.kl{{font-size:.6rem;color:#4b5563;letter-spacing:2px;margin-top:6px;}}
+.f{{color:#374151;font-size:.6rem;border-top:1px solid #111827;padding-top:20px;margin-top:32px;}}</style></head>
+<body><div class="w"><div class="top"></div><div class="ey">// Certificado ESG SmartSurplus</div><h1>SmartSurplus ESG</h1>
+<div class="g"><div class="k"><div class="kv">{co2:.1f} kg</div><div class="kl">CO2E NAO GERADO</div></div>
+<div class="k"><div class="kv">{opt['Refeicoes_Geradas']}</div><div class="kl">BENEFICIARIOS</div></div>
+<div class="k"><div class="kv">{arv}</div><div class="kl">ARVORES/ANO</div></div></div>
+<p style="color:#6b7280;line-height:1.7;">{opt['Total_Transportado_kg']:.0f} kg otimizados — desperdicio reduzido em {dw:.1f}% vs distribuicao manual.</p>
+<div class="f">AUDITADO VIA OSRM · PULP LP · {time.strftime('%d/%m/%Y')}</div></div></body></html>"""
+                st.download_button("⬇ Certificado ESG", cert, "ESG_SmartSurplus.html", "text/html", use_container_width=True)
             else:
-                # Fallback genérico
-                crisis_lat = center_lat + 0.01
-                crisis_lon = center_lon + 0.01
-                
-            folium.CircleMarker(
-                location=[crisis_lat, crisis_lon],
-                radius=50,
-                color="#EF4444",
-                weight=2,
-                fill=True,
-                fill_color="#EF4444",
-                fill_opacity=0.3,
-                popup="<b>⛔ ZONA DE BLOQUEIO</b><br>Trânsito/Alagamento severo.",
-                tooltip="Crise Viária Ativa"
-            ).add_to(m)
-        
-        # Opcional: Adicionar controle de desenho (Desativado pois vamos usar clique livre para melhor UI)
-        # from folium.plugins import Draw
-        # Draw(export=False, position='topleft', draw_options={'polyline':False, 'polygon':False, 'circle':False, 'rectangle':False, 'circlemarker':False, 'marker':True}).add_to(m)
-        
-        # Elimina a marca d'água de Créditos de código-aberto (Leaflet / OpenStreetMaps) dentro do Iframe
-        m.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution { display: none !important; }</style>"))
-        
-        for _, row in suppliers_df.iterrows():
-            html_sup = f"""
-            <div style="
-                background: linear-gradient(135deg, #10b981, #059669); 
-                width: 32px; height: 32px; 
-                border-radius: 50% 50% 50% 0; 
-                border: 2px solid #ffffff; 
-                box-shadow: 0 0 15px rgba(16, 185, 129, 0.8);
-                display: flex; align-items: center; justify-content: center;
-                color: white; transform: rotate(-45deg);
-            ">
-                <i class="fa fa-archive" style="font-size: 14px; transform: rotate(45deg);"></i>
-            </div>
-            """
-            folium.Marker(
-                location=[row["Lat"], row["Lon"]],
-                popup=f"<b>{row['Nome']}</b> <br><small>[{row.get('Categoria', '')}]</small><br>{row['Excedente_kg']} kg de sobra",
-                tooltip=row["Nome"],
-                icon=folium.DivIcon(html=html_sup, icon_size=(32, 32), icon_anchor=(16, 38))
-            ).add_to(m)
-            
-        for _, row in ngos_df.iterrows():
-            html_ngo = f"""
-            <div style="
-                background: linear-gradient(135deg, #0ea5e9, #2563eb); 
-                width: 32px; height: 32px; 
-                border-radius: 50% 50% 50% 0; 
-                border: 2px solid #ffffff; 
-                box-shadow: 0 0 15px rgba(14, 165, 233, 0.8);
-                display: flex; align-items: center; justify-content: center;
-                color: white; transform: rotate(-45deg);
-            ">
-                <i class="fa fa-users" style="font-size: 13px; transform: rotate(45deg);"></i>
-            </div>
-            """
-            folium.Marker(
-                location=[row["Lat"], row["Lon"]],
-                popup=f"<b>{row['Nome']}</b> <br><small>[{row.get('Categoria', '')}]</small><br>Déficit: {row['Demanda_kg']} kg",
-                tooltip=row["Nome"],
-                icon=folium.DivIcon(html=html_ngo, icon_size=(32, 32), icon_anchor=(16, 38))
-            ).add_to(m)
+                st.markdown('<div class="empty"><div class="empty-icon">⬡</div><div class="empty-title">Sem dados ainda</div><div class="empty-sub">Clique em "Carregar Demo" no menu lateral</div></div>', unsafe_allow_html=True)
 
-        if not results_df.empty:
-            s_coords = suppliers_df.set_index("ID")[["Lat", "Lon"]]
-            n_coords = ngos_df.set_index("ID")[["Lat", "Lon"]]
-            
-            for idx, row in results_df.iterrows():
-                s_lat = s_coords.loc[row["Fornecedor"], "Lat"]
-                s_lon = s_coords.loc[row["Fornecedor"], "Lon"]
-                n_lat = n_coords.loc[row["ONG"], "Lat"]
-                n_lon = n_coords.loc[row["ONG"], "Lon"]
-                qty = row["Qtde_kg"]
-                
-                weight = max(2, min(8, (qty / 50) * 8))
-                cor_fundo = "#38bdf8" if disaster_mode else "#f8fafc" # Azul claro brilhante para rotas de desvio
-                
-                if mode_route == "Satélite (GPS Real)":
-                    route_path = get_osrm_route(s_lat, s_lon, n_lat, n_lon)
-                else:
-                    route_path = [[s_lat, s_lon], [n_lat, n_lon]]
-                
-                plugins.AntPath(
-                    locations=route_path,
-                    color=cor_fundo,
-                    pulse_color="#000000" if not disaster_mode else "#eff6ff", # Pulso claro na rota azul
-                    weight=weight,
-                    delay=1200,
-                    dash_array=[10, 30],
-                    tooltip=f"{row['Fornecedor']} ➤ {row['ONG']} ({qty} kg)"
-                ).add_to(m)
-                
-        # CAPTURA INTELIGENTE DE MAPA PARA INTERATIVIDADE
-        map_resp = st_folium(m, width=None, height=520, returned_objects=["last_clicked"])
-        if map_resp and map_resp.get("last_clicked"):
-            l_clk = map_resp["last_clicked"]
-            if st.session_state.get("map_click_data") != l_clk and st.session_state.get("map_click_processed") != l_clk:
-                st.session_state["map_click_data"] = l_clk
-                st.rerun()
+        with col_mapa:
+            if not suppliers_df.empty or not ngos_df.empty:
+                lats = pd.concat([suppliers_df['Lat'] if not suppliers_df.empty else pd.Series(), ngos_df['Lat'] if not ngos_df.empty else pd.Series()])
+                lons = pd.concat([suppliers_df['Lon'] if not suppliers_df.empty else pd.Series(), ngos_df['Lon'] if not ngos_df.empty else pd.Series()])
+                clat, clon = lats.mean(), lons.mean()
+            else: clat, clon = -23.5505, -46.6333
+            m = folium.Map(location=[clat,clon], zoom_start=11, tiles="CartoDB dark_matter")
+            m.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution{display:none!important}</style>"))
+            if disaster_mode and not suppliers_df.empty and not ngos_df.empty:
+                cr = st.session_state.get("crisis_route")
+                if cr:
+                    cp = get_osrm_route(*cr) if mode_route=="GPS Real (OSRM)" else [[cr[0],cr[1]],[cr[2],cr[3]]]
+                    folium.PolyLine(cp,color="#ef4444",weight=4,opacity=.8,dash_array="8",tooltip="Via Bloqueada").add_to(m)
+                    mid = len(cp)//2
+                    folium.CircleMarker(cp[mid],radius=40,color="#ef4444",weight=1,fill=True,fill_color="#ef4444",fill_opacity=.12).add_to(m)
+            for _, r in suppliers_df.iterrows():
+                folium.Marker([r["Lat"],r["Lon"]], popup=f"<b>{r['Nome']}</b><br>{r.get('Categoria','')}<br>{r['Excedente_kg']} kg", tooltip=f"🟢 {r['Nome']}",
+                    icon=folium.DivIcon(html='<div style="background:#00ff88;width:26px;height:26px;border-radius:50% 50% 50% 0;border:2px solid #fff;box-shadow:0 0 10px rgba(0,255,136,.7);transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-size:12px;"><span style="transform:rotate(45deg)">🏪</span></div>',icon_size=(26,26),icon_anchor=(13,32))).add_to(m)
+            for _, r in ngos_df.iterrows():
+                folium.Marker([r["Lat"],r["Lon"]], popup=f"<b>{r['Nome']}</b><br>{r.get('Categoria','')}<br>Necessidade: {r['Demanda_kg']} kg", tooltip=f"🔵 {r['Nome']}",
+                    icon=folium.DivIcon(html='<div style="background:#38bdf8;width:26px;height:26px;border-radius:50% 50% 50% 0;border:2px solid #fff;box-shadow:0 0 10px rgba(56,189,248,.7);transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-size:12px;"><span style="transform:rotate(45deg)">🤝</span></div>',icon_size=(26,26),icon_anchor=(13,32))).add_to(m)
+            if not results_df.empty:
+                sc = suppliers_df.set_index("ID")[["Lat","Lon"]]
+                nc = ngos_df.set_index("ID")[["Lat","Lon"]]
+                for _, r in results_df.iterrows():
+                    if r["Fornecedor"] not in sc.index or r["ONG"] not in nc.index: continue
+                    slat,slon = sc.loc[r["Fornecedor"],"Lat"],sc.loc[r["Fornecedor"],"Lon"]
+                    nlat,nlon = nc.loc[r["ONG"],"Lat"],nc.loc[r["ONG"],"Lon"]
+                    qty = r["Qtde_kg"]; w = max(2,min(7,(qty/50)*7))
+                    cor = "#38bdf8" if disaster_mode else "#00ff88"
+                    path = get_osrm_route(slat,slon,nlat,nlon) if mode_route=="GPS Real (OSRM)" else [[slat,slon],[nlat,nlon]]
+                    plugins.AntPath(path,color=cor,pulse_color="#030712",weight=w,delay=900,dash_array=[8,20],tooltip=f"{r['Fornecedor']} -> {r['ONG']} ({qty:.0f} kg)").add_to(m)
+            map_resp = st_folium(m, width=None, height=520, returned_objects=["last_clicked"])
+            if map_resp and map_resp.get("last_clicked"):
+                lc = map_resp["last_clicked"]
+                if st.session_state.get("map_click_data") != lc and st.session_state.get("map_click_processed") != lc:
+                    st.session_state["map_click_data"] = lc; st.rerun()
 
     with tab2:
         st.markdown("<br>", unsafe_allow_html=True)
         if not results_df.empty:
-            pretty_df = results_df.merge(suppliers_df[["ID", "Nome"]], left_on="Fornecedor", right_on="ID")
-            pretty_df = pretty_df.rename(columns={"Nome": "Origem Operacional"})
-            pretty_df = pretty_df.merge(ngos_df[["ID", "Nome"]], left_on="ONG", right_on="ID")
-            pretty_df = pretty_df.rename(columns={"Nome": "Distrito de Recepção"})
-            
-            cols = ["Origem Operacional", "Distrito de Recepção", "Qtde_kg", "Distancia_km", "Custo_Estimado"]
-            if "Itens_Entregues" in pretty_df.columns:
-                cols.insert(3, "Itens_Entregues")
-                
-            def make_wa_link(row):
-                itens = row.get("Itens_Entregues", row['Qtde_kg'])
-                msg = f"🚚 *Ordem de Serviço SmartSurplus*\nOrigem: {row['Origem Operacional']}\nDestino: {row['Distrito de Recepção']}\nCarga Inspecionada: {itens}\n\nAbra o OSRM/Maps e faça a retirada."
-                encoded = urllib.parse.quote(msg)
-                return f"https://wa.me/?text={encoded}"
-                
-            pretty_df["Link Motorista (WA)"] = pretty_df.apply(make_wa_link, axis=1)
-            cols.append("Link Motorista (WA)")
-                
-            st.dataframe(pretty_df[cols], use_container_width=True, hide_index=True, column_config={
-                "Link Motorista (WA)": st.column_config.LinkColumn("🚀 Acionar Driver")
-            })
-            
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                pretty_df[cols].to_excel(writer, index=False, sheet_name='Planning_Frete')
-            output.seek(0)
-            
-            st.markdown("<center>", unsafe_allow_html=True)
-            st.download_button(
-                label="Baixar Manifesto de Transporte",
-                data=output,
-                file_name="Manifesto_SmartSurplus.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
-            st.markdown("</center>", unsafe_allow_html=True)
+            pdf = results_df.merge(suppliers_df[["ID","Nome"]],left_on="Fornecedor",right_on="ID").rename(columns={"Nome":"Origem"})
+            pdf = pdf.merge(ngos_df[["ID","Nome"]],left_on="ONG",right_on="ID").rename(columns={"Nome":"Destino"})
+            def wa(row):
+                msg = f"SmartSurplus\nOrigem: {row['Origem']}\nDestino: {row['Destino']}\nCarga: {row.get('Itens_Entregues',str(row['Qtde_kg']))}"
+                return f"https://wa.me/?text={urllib.parse.quote(msg)}"
+            pdf["WhatsApp Driver"] = pdf.apply(wa, axis=1)
+            cols = ["Origem","Destino","Qtde_kg","Itens_Entregues","Distancia_km","Custo_Estimado","WhatsApp Driver"]
+            cols = [c for c in cols if c in pdf.columns]
+            st.dataframe(pdf[cols], use_container_width=True, hide_index=True, column_config={
+                "Qtde_kg": st.column_config.NumberColumn("Qtde", format="%.1f kg"),
+                "Distancia_km": st.column_config.NumberColumn("Distância", format="%.2f km"),
+                "Custo_Estimado": st.column_config.NumberColumn("Custo", format="R$ %.2f"),
+                "WhatsApp Driver": st.column_config.LinkColumn("📲 Driver WA")})
+            st.markdown("<br>", unsafe_allow_html=True)
+            out = io.BytesIO()
+            exp_cols = [c for c in cols if c != "WhatsApp Driver"]
+            with pd.ExcelWriter(out, engine='openpyxl') as w: pdf[exp_cols].to_excel(w, index=False, sheet_name='Manifesto')
+            out.seek(0)
+            _, c2, _ = st.columns([1,2,1])
+            with c2: st.download_button("⬇ Manifesto (.xlsx)", out, "Manifesto_SmartSurplus.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         else:
-            st.warning("Malha bloqueada. Alivie parâmetros.")
-
-    with tab4:
-        st.markdown("<br>", unsafe_allow_html=True)
-        deficit_df = st.session_state.get("deficit_df", pd.DataFrame())
-        if not deficit_df.empty:
-            # Join with ngos names
-            def_df = deficit_df.merge(st.session_state["manual_ngos"][["ID", "Nome"]], left_on="ID_Entidade", right_on="ID")
-            def_df = def_df[["Nome", "Categoria", "Falta_kg"]].rename(columns={"Nome": "ONG Suplicante"})
-            st.dataframe(def_df, use_container_width=True, hide_index=True)
-        else:
-            st.success("Toda a demanda das ONGs foi contemplada! Nenhum déficit restante nas categorias solicitadas.")
-
-    with tab5:
-        st.markdown("<br>", unsafe_allow_html=True)
-        surplus_df = st.session_state.get("surplus_df", pd.DataFrame())
-        if not surplus_df.empty:
-            sur_df = surplus_df.merge(st.session_state["manual_suppliers"][["ID", "Nome"]], left_on="ID_Entidade", right_on="ID")
-            sur_df = sur_df[["Nome", "Categoria", "Sobra_kg"]].rename(columns={"Nome": "Supermercado"})
-            st.dataframe(sur_df, use_container_width=True, hide_index=True)
-        else:
-            st.success("Estoque 100% esvaziado! Nenhum supermercado relata sobras.")
+            st.markdown('<div class="empty"><div class="empty-icon">📦</div><div class="empty-title">Sem despachos</div><div class="empty-sub">Calcule a otimização primeiro</div></div>', unsafe_allow_html=True)
 
     with tab3:
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<h4 style='color: #ffffff; font-family: Playfair Display, serif;'>Inteligência Artificial LSTM</h4>", unsafe_allow_html=True)
-        st.markdown("<hr style='opacity:0.2'>", unsafe_allow_html=True)
-        
-        col_ctrl, col_graph = st.columns([1.2, 2])
-        
-        with col_ctrl:
-            st.markdown("**Simulador de Anomalias Globais**")
-            inflacao = st.slider("Choque de Inflação (%)", min_value=-5, max_value=30, value=5, step=1, help="Corrói o poder de compra e aumenta a sobra de produtos na prateleira.")
-            clima = st.slider("Extremo Climático / Quebra de Safra (%)", min_value=-10, max_value=40, value=12, step=1, help="Secas ou alagamentos que superlotam centros de distribuição abruptamente.")
-            
-            # Fator multiplicador preditivo interativo
-            fator_risco = 1.0 + (inflacao / 100.0) + (clima / 100.0)
-            aumento_previsto = (fator_risco - 1) * 100
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(f"""
-            <div class="metric-card" style="border-left: 4px solid #ef4444; margin-bottom: 20px;">
-                <div class="metric-label">MÊS DE RISCO MÁXIMO PROJETADO</div>
-                <div class="metric-value" style="font-size: 1.8rem;">Dezembro</div>
-                <div class="metric-diff-good" style="color:#ef4444;">▲ PICO DE +{aumento_previsto:.1f}% DESPERDÍCIO</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            frota_recomendada = max(0, int(aumento_previsto * 0.8))
-            st.markdown(f"""
-            <div class="metric-card" style="border-left: 4px solid #38bdf8;">
-                <div class="metric-label" style="color: #38bdf8;">ALERTA ZERO-WASTE & RECOMENDAÇÃO LOGÍSTICA</div>
-                <div style="font-size: 0.95rem; color: #d4d4d8; padding-top: 8px; line-height: 1.4;">
-                    A malha atual não absorverá o choque previsto. A IA recomenda expandir frotas terceirizadas em <b>{frota_recomendada}%</b> no último trimestre para mitigar o colapso do ecossistema.
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with col_graph:
-            meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-            
-            # Dinamizar volume base para o contexto da simulação atual (se possível)
-            kg_base_rede = st.session_state.get("manual_suppliers", pd.DataFrame())["Excedente_kg"].sum()
-            base_multiplier = max(1, kg_base_rede / 100) if kg_base_rede > 0 else 10
-            
-            # Curva referencial simulada
-            base_curve = [100, 95, 110, 105, 130, 120, 150, 160, 140, 180, 190, 250]
-            base_waste = [int(x * base_multiplier) for x in base_curve]
-            
-            np.random.seed(42) # Consistência visual no ruído baseline
-            ml_df = pd.DataFrame({
-                "Mês": meses,
-                "Histórico (Sem IA)": base_waste,
-                "Predição LSTM (Horizonte +30D)": [x * fator_risco + np.random.normal(0, max(1, x*0.05)) for x in base_waste]
-            })
-            
-            fig_ml = px.line(ml_df, x="Mês", y=["Histórico (Sem IA)", "Predição LSTM (Horizonte +30D)"],
-                          color_discrete_sequence=["#3f3f46", "#38bdf8"],
-                          markers=True)
-                          
-            fig_ml.update_layout(
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#a1a1aa", family="Inter"),
-                title=dict(text="Curva de Sensibilidade Linear: Estresse Logístico Acumulado", font=dict(size=14, color="#ffffff")),
-                hovermode="x unified",
-                legend=dict(
-                    title="",
-                    orientation="h",
-                    yanchor="bottom",
-                    y=-0.25,
-                    xanchor="center",
-                    x=0.5
-                ),
-                margin=dict(l=10, r=10, t=40, b=10)
-            )
-            # Fazer a linha Preditiva ser pontilhada para efeito de projeção
-            fig_ml.update_traces(patch={"line": {"dash": "dot"}}, selector={"name": "Predição LSTM (Horizonte +30D)"})
-            
-            st.plotly_chart(fig_ml, use_container_width=True)
+        ddf = st.session_state.get("deficit_df", pd.DataFrame())
+        if not ddf.empty and not ngos_df.empty:
+            merged = ddf.merge(ngos_df[["ID","Nome"]], left_on="ID_Entidade", right_on="ID", how="left")
+            merged = merged[["Nome","Categoria","Falta_kg"]].rename(columns={"Nome":"ONG","Falta_kg":"Déficit (kg)"})
+            st.dataframe(merged, use_container_width=True, hide_index=True, column_config={"Déficit (kg)": st.column_config.NumberColumn(format="%.1f kg")})
+        else: st.success("✅ Toda demanda das ONGs foi atendida. Nenhum déficit.")
+
+    with tab4:
+        st.markdown("<br>", unsafe_allow_html=True)
+        sdf = st.session_state.get("surplus_df", pd.DataFrame())
+        if not sdf.empty and not suppliers_df.empty:
+            merged = sdf.merge(suppliers_df[["ID","Nome"]], left_on="ID_Entidade", right_on="ID", how="left")
+            merged = merged[["Nome","Categoria","Sobra_kg"]].rename(columns={"Nome":"Supermercado","Sobra_kg":"Sobra (kg)"})
+            st.dataframe(merged, use_container_width=True, hide_index=True, column_config={"Sobra (kg)": st.column_config.NumberColumn(format="%.1f kg")})
+        else: st.success("✅ Estoque 100% esvaziado. Nenhuma sobra.")
+
+    with tab5:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<div class="slabel">// Inteligência Preditiva</div><div class="stitle">Simulador LSTM — Anomalias Globais</div>', unsafe_allow_html=True)
+        cc1, cc2 = st.columns([1.1, 2.2])
+        with cc1:
+            inf = st.slider("Choque Inflacionário (%)", -5, 30, 5)
+            cli = st.slider("Extremo Climático (%)", -10, 40, 12)
+            fr = 1.0 + inf/100 + cli/100; ap = (fr-1)*100; frota = max(0, int(ap*.8))
+            st.markdown(f'<div class="mc" style="margin-top:20px;"><div class="mc-bar" style="background:#ef4444;"></div><div class="mc-label">Pico Projetado</div><div class="mc-value" style="font-size:1.3rem;">Dezembro</div><div class="mc-diff" style="color:#ef4444;">▲ +{ap:.1f}% desperdício</div></div><div class="mc"><div class="mc-bar" style="background:#38bdf8;"></div><div class="mc-label">Recomendação IA</div><div style="color:#9ca3af;font-size:.82rem;line-height:1.6;padding-top:6px;">Expandir frotas em <b style="color:#f9fafb;">{frota}%</b> no Q4.</div></div>', unsafe_allow_html=True)
+        with cc2:
+            meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+            kg_b = st.session_state.get("manual_suppliers", pd.DataFrame())
+            mult = max(1, kg_b["Excedente_kg"].sum()/100) if not kg_b.empty and "Excedente_kg" in kg_b else 10
+            base = [int(x*mult) for x in [100,95,110,105,130,120,150,160,140,180,190,250]]
+            np.random.seed(42)
+            pred = [x*fr + np.random.normal(0, max(1, x*.05)) for x in base]
+            fig3 = go.Figure()
+            fig3.add_trace(go.Scatter(x=meses,y=base,name='Histórico',line=dict(color='#1f2937',width=2),mode='lines+markers',marker=dict(size=4)))
+            fig3.add_trace(go.Scatter(x=meses,y=pred,name='Predição LSTM',line=dict(color='#00ff88',width=2,dash='dot'),mode='lines+markers',marker=dict(size=4),fill='tonexty',fillcolor='rgba(0,255,136,.04)'))
+            fig3.update_layout(plot_bgcolor='rgba(0,0,0,0)',paper_bgcolor='rgba(0,0,0,0)',font=dict(color='#4b5563',family='Space Grotesk'),title=dict(text='Curva de Estresse Logístico',font=dict(size=13,color='#f9fafb',family='Syne')),hovermode='x unified',legend=dict(orientation='h',y=-0.25,font=dict(color='#6b7280',size=10)),margin=dict(l=0,r=0,t=36,b=0),xaxis=dict(gridcolor='#0d1117'),yaxis=dict(gridcolor='#0d1117'))
+            st.plotly_chart(fig3, use_container_width=True)
 
     with tab6:
         st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<div class="slabel">// Multi-Tenant Architecture</div><div class="stitle">App do Motorista via QR Code</div>', unsafe_allow_html=True)
+        st.markdown('<p style="color:#4b5563;font-size:.88rem;max-width:560px;line-height:1.7;">Aponte a câmera do celular para o QR Code. O servidor detecta <code style="color:#00ff88;background:#041a0f;padding:2px 6px;border-radius:4px;">?role=driver</code> e injeta a interface do motorista.</p>', unsafe_allow_html=True)
+        base_url = st.text_input("URL pública:", "https://smartsurplus-logistics.streamlit.app/")
         if not results_df.empty:
-            first_dispatch = results_df.iloc[0]
-            s_name = st.session_state["manual_suppliers"].set_index("ID").loc[first_dispatch["Fornecedor"], "Nome"]
-            n_name = st.session_state["manual_ngos"].set_index("ID").loc[first_dispatch["ONG"], "Nome"]
-            itens = first_dispatch.get("Itens_Entregues", f"{first_dispatch['Qtde_kg']}kg")
-             
-            col_empty1, col_mob, col_empty2 = st.columns([1, 2, 1])
-            with col_mob:
-                st.markdown(f"""
-                <div style="background-color: #09090b; border: 1px solid #27272a; border-radius: 40px; padding: 25px; max-width: 380px; margin: 0 auto; box-shadow: 0px 10px 40px rgba(0,0,0,0.8); position: relative;">
-                    <!-- Simulador de iPhone Notch -->
-                    <div style="position: absolute; top: -2px; left: 50%; transform: translateX(-50%); width: 120px; height: 25px; background: #000; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;"></div>
-                    
-                    <div style="text-align: center; color: #a1a1aa; font-size: 0.8rem; margin-top: 15px; margin-bottom: 25px; font-weight: 600; letter-spacing: 1px;">DRIVER DISPATCH SYSTEM</div>
-                    
-                    <div style="background-color: #18181b; border: 1px solid #3f3f46; border-radius: 12px; padding: 18px; margin-bottom: 15px;">
-                        <span style="color: #38bdf8; font-size: 0.85rem; font-weight: bold; text-transform: uppercase;">A Ponto de Coleta (Origem)</span><br>
-                        <b style="color: white; font-size: 1.15rem;">{s_name}</b>
-                    </div>
-                    
-                    <div style="text-align: center; color: #52525b; margin: 5px 0;">
-                        <i class="material-icons">arrow_downward</i>
-                    </div>
-                    
-                    <div style="background-color: #18181b; border: 1px solid #3f3f46; border-radius: 12px; padding: 18px; margin-bottom: 15px;">
-                        <span style="color: #10b981; font-size: 0.85rem; font-weight: bold; text-transform: uppercase;">B Ponto de Despacho (Destino)</span><br>
-                        <b style="color: white; font-size: 1.15rem;">{n_name}</b>
-                    </div>
-                    
-                    <div style="background-color: #18181b; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 15px; margin-bottom: 25px;">
-                        <span style="color: #a1a1aa; font-size: 0.85rem;">Volume de Carga Validado:</span><br>
-                        <b style="color: #fca5a5; font-size: 1.1rem;">{itens}</b>
-                    </div>
-                    
-                    <button style="width: 100%; background: #10b981; color: white; padding: 15px; border: none; border-radius: 12px; font-weight: bold; font-size: 1.1rem; cursor: pointer; box-shadow: 0 4px 15px rgba(16,185,129,0.3);">Aceitar Operação & GPS</button>
-                    
-                    <div style="text-align: center; color: #71717a; font-size: 0.75rem; margin-top: 25px;">
-                        Integração Nativa OSRM Ativada. Modo Silencioso.
-                    </div>
-                    <div style="width: 40%; height: 5px; background: #3f3f46; border-radius: 5px; margin: 25px auto 0 auto;"></div>
-                 </div>
-                 """, unsafe_allow_html=True)
+            first = results_df.iloc[0]
+            idx_s = suppliers_df.set_index("ID").index
+            idx_n = ngos_df.set_index("ID").index
+            sn = suppliers_df.set_index("ID").loc[first["Fornecedor"],"Nome"] if first["Fornecedor"] in idx_s else first["Fornecedor"]
+            nn = ngos_df.set_index("ID").loc[first["ONG"],"Nome"] if first["ONG"] in idx_n else first["ONG"]
+            it = first.get("Itens_Entregues", f"{first['Qtde_kg']} kg")
+            if base_url.endswith("/"): base_url = base_url[:-1]
+            link = f"{base_url}/?role=driver&orig={urllib.parse.quote(sn)}&dest={urllib.parse.quote(nn)}&carga={urllib.parse.quote(it)}"
+            cq, ci = st.columns([1,2])
+            with cq:
+                import qrcode
+                qr = qrcode.QRCode(version=1, box_size=9, border=3)
+                qr.add_data(link); qr.make(fit=True)
+                img = qr.make_image(fill_color="#00ff88", back_color="#030712")
+                buf = io.BytesIO(); img.save(buf, format="PNG")
+                st.image(buf, use_container_width=True)
+            with ci:
+                st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#00ff88;"></div><div class="mc-label">Rota em Transmissão</div><div style="color:#f9fafb;font-size:.9rem;padding-top:8px;line-height:2;"><span style="color:#00ff88;">Origem:</span> {sn}<br><span style="color:#38bdf8;">Destino:</span> {nn}<br><span style="color:#f59e0b;">Carga:</span> {it}</div></div>', unsafe_allow_html=True)
         else:
-            st.info("Nenhuma ordem de serviço foi gerada pelo modelo Multi-Commodity ainda.")
+            st.markdown('<div class="empty"><div class="empty-icon">📱</div><div class="empty-title">Sem rota</div><div class="empty-sub">Calcule a otimização para gerar o QR</div></div>', unsafe_allow_html=True)
