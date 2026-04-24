@@ -330,7 +330,7 @@ html,body{width:100%;background:transparent;color:#fff;font-family:'Space Grotes
   <div class="m-txt rv d1">
     <span class="d">Todos os dias, toneladas de </span><span class="l">alimentos perfeitos</span>
     <span class="d"> são descartadas por </span><span class="g">falhas logísticas.</span>
-    <span class="d"> Isso não é desperdício — é </span><span class="l">falta de inteligência</span>
+    <span class="d"> Isso não é só desperdício - mas também </span><span class="l">falta de inteligência</span>
     <span class="d"> na malha de distribuição.</span>
   </div>
   <div class="m-ey rv d2">// A Solução</div>
