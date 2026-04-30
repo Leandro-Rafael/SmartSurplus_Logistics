@@ -19,15 +19,9 @@ st.set_page_config(
 )
 
 # ── WATERMARK REMOVER ──
-components.html("""<script>
-const obs=new MutationObserver(()=>{
-  window.parent.document.querySelectorAll('[data-testid="main-menu-list"]').forEach(ul=>{
-    const d=ul.nextElementSibling;
-    if(d&&d.tagName==='DIV')d.style.setProperty('display','none','important');
-  });
-});
-obs.observe(window.parent.document.body,{childList:true,subtree:true});
-</script>""", height=0, width=0)
+st.markdown("""<style>
+[data-testid="main-menu-list"] + div { display: none !important; }
+</style>""", unsafe_allow_html=True)
 
 # ── DRIVER APP ──
 if st.query_params.get("role") == "driver":
@@ -265,7 +259,7 @@ html,body{width:100%;background:transparent;color:#fff;font-family:'Space Grotes
 <!-- HERO -->
 <div class="hero">
   <div class="hero-vid">
-    <iframe src="https://www.youtube.com/embed/LmUsAFDfk6E?autoplay=1&mute=1&loop=1&playlist=LmUsAFDfk6E&controls=0&showinfo=0&rel=0&iv_load_policy=3&modestbranding=1&playsinline=1" frameborder="0" allow="autoplay;encrypted-media" allowfullscreen></iframe>
+    <iframe src="https://www.youtube.com/embed/LmUsAFDfk6E?autoplay=1&mute=1&loop=1&playlist=LmUsAFDfk6E&controls=0&showinfo=0&rel=0&iv_load_policy=3&modestbranding=1&playsinline=1" frameborder="0" allow="autoplay;encrypted-media" allowfullscreen loading="lazy"></iframe>
   </div>
   <div class="hero-ov"></div>
   <div class="real-globe-wrap"><div class="real-globe"></div></div>
@@ -441,12 +435,12 @@ function animCount(el) {
 }
 
 // DYNAMIC TRIGGER ON OBSERVED PARENT SCREEN POSITION
-setInterval(() => {
+function checkReveals() {
   try {
     const pHeight = window.parent.innerHeight || 800;
     const iframe = window.frameElement;
     if(!iframe) {
-      document.querySelectorAll('.rv').forEach(el => el.classList.add('on'));
+      document.querySelectorAll('.rv:not(.on)').forEach(el => el.classList.add('on'));
       return;
     }
     const iframeTop = iframe.getBoundingClientRect().top;
@@ -468,7 +462,17 @@ setInterval(() => {
   } catch(e) {
     document.querySelectorAll('.rv:not(.on)').forEach(el => el.classList.add('on'));
   }
-}, 100);
+}
+
+// Initial check
+setTimeout(checkReveals, 100);
+
+// Combine with parent scroll
+try {
+  window.parent.addEventListener('scroll', () => {
+    checkReveals();
+  }, { passive: true });
+} catch(e) {}
 
 // ENTRAR NO APP
 function enterApp() {
@@ -506,8 +510,11 @@ function resizeNet() {
   }
 }
 
-function animNet() {
+let lastFrameTime = 0;
+function animNet(time) {
   requestAnimationFrame(animNet);
+  if (time - lastFrameTime < 33) return; // limit to ~30 FPS
+  lastFrameTime = time;
   nctx.clearRect(0, 0, cw, ch);
   for(const h of hubs) {
     h.x += h.vx; h.y += h.vy;
@@ -542,21 +549,22 @@ resizeNet();
 animNet();
 
 // AUTO RESIZE IFRAME HEIGHT TO REMOVE BLANK SPACE
-setInterval(() => {
+const ro = new ResizeObserver(() => {
   try {
     const h = document.querySelector('.cta').getBoundingClientRect().bottom;
     if(window.frameElement) {
-      window.frameElement.style.height = h + 'px';
+      if(window.frameElement.style.height !== h + 'px') window.frameElement.style.height = h + 'px';
     } else {
       const iframes = window.parent.document.querySelectorAll('iframe');
       iframes.forEach(f => {
-        if(f.style.height === '4800px' || f.style.height === '2400px' || f.getAttribute('height') === '4800' || f.getAttribute('height') === '2400') {
+        if(f.style.height !== h + 'px' && (f.style.height === '4800px' || f.style.height === '2400px' || f.getAttribute('height') === '4800' || f.getAttribute('height') === '2400')) {
           f.style.height = h + 'px';
         }
       });
     }
   } catch(e) {}
-}, 400);
+});
+ro.observe(document.body);
 </script>
 </body>
 </html>
@@ -628,6 +636,21 @@ else:
     .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
     .empty-title { font-family: 'Syne', sans-serif; font-size: 1.2rem; color: #4b5563; margin-bottom: 6px; }
     .empty-sub { font-family: 'Space Mono', monospace; font-size: .72rem; letter-spacing: 1px; color: #374151; }
+
+    @media (max-width: 768px) {
+        .hide-on-mobile { display: none !important; }
+        [data-testid="stSidebar"] [data-testid="column"] { min-width: calc(50% - 1rem) !important; flex: 1 1 calc(50% - 1rem) !important; }
+    }
+    
+    /* Ajustes da barra lateral para subir o menu e o título */
+    [data-testid="stSidebarUserContent"] { padding-top: 0rem !important; }
+    [data-testid="stSidebarHeader"] { padding-bottom: 0rem !important; padding-top: 1rem !important; height: auto !important; position: relative !important; z-index: 99; }
+    [data-testid="stSidebarHeader"] button { position: absolute !important; right: 10px !important; top: 10px !important; }
+    
+    /* Estilização e fixação do Selectbox (Menu de abas) */
+    .sticky-header { position: sticky; top: 0; z-index: 100; background: #050810; padding: 10px 0; margin-bottom: 15px; }
+    [data-testid="stSelectbox"] > div[data-baseweb="select"] { background: #03050e !important; border: 1px solid #00ff88 !important; border-radius: 8px !important; box-shadow: 0 0 10px rgba(0, 255, 136, 0.1); }
+    [data-testid="stSelectbox"] > div[data-baseweb="select"] * { color: #00ff88 !important; font-family: 'Space Mono', monospace !important; font-weight: 700 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -797,7 +820,7 @@ else:
         <div style="font-family:'Space Mono',monospace;font-size:.58rem;color:#00ff88;letter-spacing:3px;text-transform:uppercase;">// Painel Operacional</div>
         <div style="font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:#f9fafb;line-height:1.1;margin-top:2px;">Analytics Central</div>
       </div>
-      <div style="display:flex;gap:10px;">
+      <div style="display:flex;gap:10px;" class="hide-on-mobile">
         <div style="background:#041a0f;border:1px solid #0a3d1f;border-radius:8px;padding:8px 14px;text-align:center;">
           <div style="font-family:'Space Mono',monospace;font-size:1rem;font-weight:700;color:#00ff88;">{len(suppliers_df)}</div>
           <div style="font-family:'Space Mono',monospace;font-size:.55rem;color:#374151;letter-spacing:1px;">MERCADOS</div>
@@ -813,9 +836,13 @@ else:
       </div>
     </div>""", unsafe_allow_html=True)
 
-    tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs(["🗺 Mapa & Overview","📦 Despachos","📉 Déficit ONGs","📊 Estoque","🔮 Previsão IA","📱 App Motorista"])
+    menu_opcoes = ["🗺 Mapa & Overview","📦 Despachos","📉 Déficit ONGs","📊 Estoque","🔮 Previsão IA","📱 App Motorista"]
+    
+    st.markdown('<div class="sticky-header">', unsafe_allow_html=True)
+    aba_selecionada = st.selectbox("Navegação", menu_opcoes, label_visibility="collapsed")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    with tab1:
+    if aba_selecionada == menu_opcoes[0]:
         c1,c2,c3,c4 = st.columns(4)
         with c1: st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#ef4444;"></div><div class="mc-label">Desperdício Líquido</div><div class="mc-value">{opt["Total_Desperdicio_kg"]:.0f}<span class="mc-unit"> kg</span></div><div class="mc-diff">↓ {dw:.1f}% vs manual</div></div>', unsafe_allow_html=True)
         with c2: st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#38bdf8;"></div><div class="mc-label">Refeições Geradas</div><div class="mc-value">{opt["Refeicoes_Geradas"]}<span class="mc-unit"> ref.</span></div><div class="mc-diff">+{dref} a mais que caótico</div></div>', unsafe_allow_html=True)
@@ -893,7 +920,7 @@ h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
                 if st.session_state.get("map_click_data") != lc and st.session_state.get("map_click_processed") != lc:
                     st.session_state["map_click_data"] = lc; st.rerun()
 
-    with tab2:
+    elif aba_selecionada == menu_opcoes[1]:
         st.markdown("<br>", unsafe_allow_html=True)
         if not results_df.empty:
             pdf = results_df.merge(suppliers_df[["ID","Nome"]],left_on="Fornecedor",right_on="ID").rename(columns={"Nome":"Origem"})
@@ -919,7 +946,7 @@ h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
         else:
             st.markdown('<div class="empty"><div class="empty-icon">📦</div><div class="empty-title">Sem despachos</div><div class="empty-sub">Calcule a otimização primeiro</div></div>', unsafe_allow_html=True)
 
-    with tab3:
+    elif aba_selecionada == menu_opcoes[2]:
         st.markdown("<br>", unsafe_allow_html=True)
         ddf = st.session_state.get("deficit_df", pd.DataFrame())
         if not ddf.empty and not ngos_df.empty:
@@ -928,7 +955,7 @@ h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
             st.dataframe(merged, use_container_width=True, hide_index=True, column_config={"Déficit (kg)": st.column_config.NumberColumn(format="%.1f kg")})
         else: st.success("✅ Toda demanda das ONGs foi atendida. Nenhum déficit.")
 
-    with tab4:
+    elif aba_selecionada == menu_opcoes[3]:
         st.markdown("<br>", unsafe_allow_html=True)
         sdf = st.session_state.get("surplus_df", pd.DataFrame())
         if not sdf.empty and not suppliers_df.empty:
@@ -937,7 +964,7 @@ h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
             st.dataframe(merged, use_container_width=True, hide_index=True, column_config={"Sobra (kg)": st.column_config.NumberColumn(format="%.1f kg")})
         else: st.success("✅ Estoque 100% esvaziado. Nenhuma sobra.")
 
-    with tab5:
+    elif aba_selecionada == menu_opcoes[4]:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown('<div class="slabel">// Inteligência Preditiva</div><div class="stitle">Simulador LSTM — Anomalias Globais</div>', unsafe_allow_html=True)
         cc1, cc2 = st.columns([1.1, 2.2])
@@ -959,7 +986,7 @@ h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
             fig3.update_layout(plot_bgcolor='rgba(0,0,0,0)',paper_bgcolor='rgba(0,0,0,0)',font=dict(color='#4b5563',family='Space Grotesk'),title=dict(text='Curva de Estresse Logístico',font=dict(size=13,color='#f9fafb',family='Syne')),hovermode='x unified',legend=dict(orientation='h',y=-0.25,font=dict(color='#6b7280',size=10)),margin=dict(l=0,r=0,t=36,b=0),xaxis=dict(gridcolor='#0d1117'),yaxis=dict(gridcolor='#0d1117'))
             st.plotly_chart(fig3, use_container_width=True)
 
-    with tab6:
+    elif aba_selecionada == menu_opcoes[5]:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown('<div class="slabel">// Multi-Tenant Architecture</div><div class="stitle">App do Motorista via QR Code</div>', unsafe_allow_html=True)
         st.markdown('<p style="color:#4b5563;font-size:.88rem;max-width:560px;line-height:1.7;">Aponte a câmera do celular para o QR Code. O servidor detecta <code style="color:#00ff88;background:#041a0f;padding:2px 6px;border-radius:4px;">?role=driver</code> e injeta a interface do motorista.</p>', unsafe_allow_html=True)

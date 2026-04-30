@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import math
+import streamlit as st
 
 REAL_SUPPLIERS = [
     {"Nome": "Carrefour Pinheiros",        "Lat": -23.5684, "Lon": -46.7001, "Tipo": "Hipermercado"},
@@ -70,6 +71,7 @@ def generate_ngos(num_ngos=8, seed=43):
     return pd.DataFrame(data)
 
 
+@st.cache_data(show_spinner=False)
 def calculate_distance_matrix(suppliers_df, ngos_df):
     s_ids = suppliers_df["ID"].tolist()
     n_ids = ngos_df["ID"].tolist()
