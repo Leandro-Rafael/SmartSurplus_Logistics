@@ -640,17 +640,20 @@ else:
     @media (max-width: 768px) {
         .hide-on-mobile { display: none !important; }
         [data-testid="stSidebar"] [data-testid="column"] { min-width: calc(50% - 1rem) !important; flex: 1 1 calc(50% - 1rem) !important; }
+        .top-header { justify-content: center !important; text-align: center !important; }
+        .header-text-container { width: 100%; text-align: center; }
     }
     
     /* Ajustes da barra lateral para subir o menu e o título */
-    [data-testid="stSidebarUserContent"] { padding-top: 0rem !important; }
+    [data-testid="stSidebarUserContent"] { padding-top: 0rem !important; margin-top: -60px !important; }
     [data-testid="stSidebarHeader"] { padding-bottom: 0rem !important; padding-top: 1rem !important; height: auto !important; position: relative !important; z-index: 99; }
     [data-testid="stSidebarHeader"] button { position: absolute !important; right: 10px !important; top: 10px !important; }
     
     /* Estilização e fixação do Selectbox (Menu de abas) */
     .sticky-header { position: sticky; top: 0; z-index: 100; background: #050810; padding: 10px 0; margin-bottom: 15px; }
-    [data-testid="stSelectbox"] > div[data-baseweb="select"] { background: #03050e !important; border: 1px solid #00ff88 !important; border-radius: 8px !important; box-shadow: 0 0 10px rgba(0, 255, 136, 0.1); }
-    [data-testid="stSelectbox"] > div[data-baseweb="select"] * { color: #00ff88 !important; font-family: 'Space Mono', monospace !important; font-weight: 700 !important; }
+    [data-testid="stSelectbox"] > div[data-baseweb="select"] { background: #03050e !important; border: 1px solid #00ff88 !important; border-radius: 8px !important; box-shadow: 0 0 10px rgba(0, 255, 136, 0.1); cursor: pointer !important; }
+    [data-testid="stSelectbox"] > div[data-baseweb="select"] * { color: #00ff88 !important; font-family: 'Space Mono', monospace !important; font-weight: 700 !important; cursor: pointer !important; }
+    [data-testid="stSelectbox"] input { pointer-events: none !important; caret-color: transparent !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -815,8 +818,8 @@ else:
     pck=(1-(co_/max(0.01,cc_)))*100
 
     st.markdown(f"""
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #0d1117;">
-      <div>
+    <div class="top-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #0d1117;">
+      <div class="header-text-container">
         <div style="font-family:'Space Mono',monospace;font-size:.58rem;color:#00ff88;letter-spacing:3px;text-transform:uppercase;">// Painel Operacional</div>
         <div style="font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:#f9fafb;line-height:1.1;margin-top:2px;">Analytics Central</div>
       </div>
