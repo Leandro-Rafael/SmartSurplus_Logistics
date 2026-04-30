@@ -112,7 +112,7 @@ if not st.session_state["logged_in"]:
     footer { visibility: hidden !important; }
     .block-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
     [data-testid="stVerticalBlock"] > div { padding: 0 !important; gap: 0 !important; }
-    iframe[title="streamlit_components.v1.components.html"] { height: 100vh !important; border: none !important; }
+    iframe { height: 100vh !important; border: none !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -126,7 +126,7 @@ if not st.session_state["logged_in"]:
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Space+Grotesk:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-html, body { width: 100%; background: transparent; color: #fff; font-family: 'Space Grotesk', sans-serif; overflow-x: hidden; overflow-y: auto; -ms-overflow-style: none; scrollbar-width: none; }
+html, body { width: 100%; background: transparent; color: #fff; font-family: 'Space Grotesk', sans-serif; overflow-x: hidden; -ms-overflow-style: none; scrollbar-width: none; }
 ::-webkit-scrollbar { display: none; }
 
 /* CURSOR */
@@ -401,25 +401,21 @@ const moveCg = e => {
 document.addEventListener('mousemove', moveCg);
 try { window.parent.document.addEventListener('mousemove', moveCg); } catch(e) {}
 
-// FIX HERO HEIGHT TO viewport, avoiding 4800px vertical center
-try {
-  const h = Math.min(window.parent.innerHeight || window.innerHeight, 1200);
-  document.querySelectorAll('.hero').forEach(el => { el.style.height = h + 'px'; el.style.minHeight = h + 'px'; });
-} catch(e) { document.querySelectorAll('.hero').forEach(el => el.style.height = '800px'); }
+// FIX HERO HEIGHT TO viewport
+const h = window.innerHeight;
+document.querySelectorAll('.hero').forEach(el => { el.style.height = h + 'px'; el.style.minHeight = h + 'px'; });
 
-// PARALLAX HERO with Parent Scroll
-try {
-  window.parent.addEventListener('scroll', () => {
-    const sy = window.parent.scrollY;
-    const heroVid = document.querySelector('.hero-vid iframe');
-    const heroC   = document.querySelector('.hero-c');
-    if(heroVid) heroVid.style.transform = `translateY(${sy * .3}px)`;
-    if(heroC) {
-      heroC.style.transform = `translateY(${sy * .12}px)`;
-      heroC.style.opacity   = Math.max(0, 1 - sy / 500);
-    }
-  });
-} catch(e) {}
+// PARALLAX HERO with internal Scroll
+window.addEventListener('scroll', () => {
+  const sy = window.scrollY;
+  const heroVid = document.querySelector('.hero-vid iframe');
+  const heroC   = document.querySelector('.hero-c');
+  if(heroVid) heroVid.style.transform = `translateY(${sy * .3}px)`;
+  if(heroC) {
+    heroC.style.transform = `translateY(${sy * .12}px)`;
+    heroC.style.opacity   = Math.max(0, 1 - sy / 500);
+  }
+});
 
 // ANIM COUNTER
 function animCount(el) {
@@ -436,45 +432,24 @@ function animCount(el) {
   requestAnimationFrame(tick);
 }
 
-// DYNAMIC TRIGGER ON OBSERVED PARENT SCREEN POSITION
-function checkReveals() {
-  try {
-    const pHeight = window.parent.innerHeight || 800;
-    const iframe = window.frameElement;
-    if(!iframe) {
-      document.querySelectorAll('.rv:not(.on)').forEach(el => el.classList.add('on'));
-      return;
-    }
-    const iframeTop = iframe.getBoundingClientRect().top;
-    
-    document.querySelectorAll('.rv:not(.on)').forEach(el => {
-      const elRect = el.getBoundingClientRect();
-      const absoluteTop = iframeTop + elRect.top;
-      if (absoluteTop < pHeight * 1.1) {
-        el.classList.add('on');
-        if(el.classList.contains('citem')) {
-           const countSpan = el.querySelector('[data-count]');
-           if(countSpan && !countSpan.dataset.st) {
-              countSpan.dataset.st = '1';
-              animCount(countSpan);
-           }
-        }
+// DYNAMIC TRIGGER WITH INTERSECTION OBSERVER
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('on');
+      if(entry.target.classList.contains('citem')) {
+         const countSpan = entry.target.querySelector('[data-count]');
+         if(countSpan && !countSpan.dataset.st) {
+            countSpan.dataset.st = '1';
+            animCount(countSpan);
+         }
       }
-    });
-  } catch(e) {
-    document.querySelectorAll('.rv:not(.on)').forEach(el => el.classList.add('on'));
-  }
-}
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1 });
 
-// Initial check
-setTimeout(checkReveals, 100);
-
-// Combine with parent scroll
-try {
-  window.parent.addEventListener('scroll', () => {
-    checkReveals();
-  }, { passive: true });
-} catch(e) {}
+document.querySelectorAll('.rv').forEach(el => observer.observe(el));
 
 // ENTRAR NO APP
 function enterApp() {
