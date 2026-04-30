@@ -649,11 +649,13 @@ else:
     [data-testid="stSidebarHeader"] { padding-bottom: 0rem !important; padding-top: 1rem !important; height: auto !important; position: relative !important; z-index: 99; }
     [data-testid="stSidebarHeader"] button { position: absolute !important; right: 10px !important; top: 10px !important; }
     
-    /* Estilização e fixação do Selectbox (Menu de abas) */
+    /* Estilização e fixação do Menu Popover (Navegação) */
     .sticky-header { position: sticky; top: 0; z-index: 100; background: #050810; padding: 10px 0; margin-bottom: 15px; }
-    [data-testid="stSelectbox"] > div[data-baseweb="select"] { background: #03050e !important; border: 1px solid #00ff88 !important; border-radius: 8px !important; box-shadow: 0 0 10px rgba(0, 255, 136, 0.1); cursor: pointer !important; }
-    [data-testid="stSelectbox"] > div[data-baseweb="select"] * { color: #00ff88 !important; font-family: 'Space Mono', monospace !important; font-weight: 700 !important; cursor: pointer !important; }
-    [data-testid="stSelectbox"] input { pointer-events: none !important; caret-color: transparent !important; }
+    [data-testid="stPopover"] > button { background: #03050e !important; border: 1px solid #00ff88 !important; border-radius: 8px !important; box-shadow: 0 0 10px rgba(0, 255, 136, 0.1); color: #00ff88 !important; font-family: 'Space Mono', monospace !important; font-weight: 700 !important; cursor: pointer !important; text-align: left; padding: 12px 16px !important; }
+    [data-testid="stPopover"] > button:hover { background: rgba(0, 255, 136, 0.05) !important; border-color: #00ff88 !important; color: #00ff88 !important; }
+    div[data-testid="stPopoverBody"] { background: #050810 !important; border: 1px solid #0d1117 !important; border-radius: 8px !important; padding: 8px !important; }
+    div[data-testid="stPopoverBody"] [data-testid="stButton"] button { background: transparent !important; color: #f9fafb !important; border: none !important; font-family: 'Space Mono', monospace !important; font-weight: 500 !important; text-align: left !important; justify-content: flex-start !important; padding: 10px !important; margin-bottom: 2px !important; border-radius: 6px !important; font-size: 0.85rem !important; }
+    div[data-testid="stPopoverBody"] [data-testid="stButton"] button:hover { background: rgba(0, 255, 136, 0.1) !important; color: #00ff88 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -841,9 +843,18 @@ else:
 
     menu_opcoes = ["🗺 Mapa & Overview","📦 Despachos","📉 Déficit ONGs","📊 Estoque","🔮 Previsão IA","📱 App Motorista"]
     
+    if "aba_selecionada" not in st.session_state:
+        st.session_state.aba_selecionada = menu_opcoes[0]
+        
     st.markdown('<div class="sticky-header">', unsafe_allow_html=True)
-    aba_selecionada = st.selectbox("Navegação", menu_opcoes, label_visibility="collapsed")
+    with st.popover(f"▼ {st.session_state.aba_selecionada}", use_container_width=True):
+        for op in menu_opcoes:
+            if st.button(op, use_container_width=True, key=f"nav_{op}"):
+                st.session_state.aba_selecionada = op
+                st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
+
+    aba_selecionada = st.session_state.aba_selecionada
 
     if aba_selecionada == menu_opcoes[0]:
         c1,c2,c3,c4 = st.columns(4)
