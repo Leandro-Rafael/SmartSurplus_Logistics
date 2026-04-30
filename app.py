@@ -658,6 +658,8 @@ else:
     div[data-testid="stPopoverBody"] { background: #050810 !important; border: 1px solid #0d1117 !important; border-radius: 8px !important; padding: 8px !important; }
     div[data-testid="stPopoverBody"] [data-testid="stButton"] button { background: transparent !important; color: #f9fafb !important; border: none !important; font-family: 'Space Mono', monospace !important; font-weight: 500 !important; text-align: left !important; justify-content: flex-start !important; padding: 10px !important; margin-bottom: 2px !important; border-radius: 6px !important; font-size: 0.85rem !important; }
     div[data-testid="stPopoverBody"] [data-testid="stButton"] button:hover { background: rgba(0, 255, 136, 0.1) !important; color: #00ff88 !important; }
+    div[data-testid="stPopoverBody"] [data-testid="stButton"] button div[data-testid="stMarkdownContainer"] { width: 100% !important; text-align: left !important; }
+    div[data-testid="stPopoverBody"] [data-testid="stButton"] button div[data-testid="stMarkdownContainer"] p { text-align: left !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -843,7 +845,7 @@ else:
       </div>
     </div>""", unsafe_allow_html=True)
 
-    menu_opcoes = ["🗺 Mapa & Overview","📦 Despachos","📉 Déficit ONGs","📊 Estoque","🔮 Previsão IA","📱 App Motorista"]
+    menu_opcoes = ["⬡ Mapa & Overview","◈ Despachos","⚠ Déficit ONGs","▤ Estoque","◎ Previsão IA","❖ App Motorista"]
     
     if "aba_selecionada" not in st.session_state:
         st.session_state.aba_selecionada = menu_opcoes[0]
