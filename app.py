@@ -107,11 +107,12 @@ if not st.session_state["logged_in"]:
     # Esconde tudo do Streamlit e zera padding
     st.markdown("""
     <style>
-    .stApp { background: #000 !important; }
+    .stApp { background: #000 !important; overflow: hidden !important; }
     .stAppHeader, [data-testid="collapsedControl"], [data-testid="stSidebar"] { display: none !important; }
     footer { visibility: hidden !important; }
     .block-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
-    [data-testid="stVerticalBlock"] > div { padding: 0 !important; }
+    [data-testid="stVerticalBlock"] > div { padding: 0 !important; gap: 0 !important; }
+    iframe[title="streamlit_components.v1.components.html"] { height: 100vh !important; border: none !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -124,8 +125,9 @@ if not st.session_state["logged_in"]:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Space+Grotesk:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-*{margin:0;padding:0;box-sizing:border-box;}
-html,body{width:100%;background:transparent;color:#fff;font-family:'Space Grotesk',sans-serif;overflow-x:hidden;}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width: 100%; background: transparent; color: #fff; font-family: 'Space Grotesk', sans-serif; overflow-x: hidden; overflow-y: auto; -ms-overflow-style: none; scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
 
 /* CURSOR */
 #cg{position:fixed;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(0,255,136,.12) 0%,rgba(0,255,136,.02) 40%,transparent 70%);pointer-events:none;z-index:9999;transform:translate(-50%,-50%);top:50%;left:50%;transition:left .08s ease-out,top .08s ease-out;mix-blend-mode:screen;}
@@ -548,27 +550,10 @@ try { window.parent.addEventListener('resize', resizeNet); } catch(e){}
 resizeNet();
 animNet();
 
-// AUTO RESIZE IFRAME HEIGHT TO REMOVE BLANK SPACE
-const ro = new ResizeObserver(() => {
-  try {
-    const h = document.querySelector('.cta').getBoundingClientRect().bottom;
-    if(window.frameElement) {
-      if(window.frameElement.style.height !== h + 'px') window.frameElement.style.height = h + 'px';
-    } else {
-      const iframes = window.parent.document.querySelectorAll('iframe');
-      iframes.forEach(f => {
-        if(f.style.height !== h + 'px' && (f.style.height === '4800px' || f.style.height === '2400px' || f.getAttribute('height') === '4800' || f.getAttribute('height') === '2400')) {
-          f.style.height = h + 'px';
-        }
-      });
-    }
-  } catch(e) {}
-});
-ro.observe(document.body);
 </script>
 </body>
 </html>
-    """, height=2400, scrolling=False)
+    """, height=1000, scrolling=True)
 
     # Botão Streamlit OCULTO — acionado pelo JS acima
     st.markdown("""
