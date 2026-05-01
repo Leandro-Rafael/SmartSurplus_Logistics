@@ -1009,7 +1009,7 @@ h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown('<div class="slabel">// Multi-Tenant Architecture</div><div class="stitle">App do Motorista via QR Code</div>', unsafe_allow_html=True)
         st.markdown('<p style="color:#4b5563;font-size:.88rem;max-width:560px;line-height:1.7;">Aponte a câmera do celular para o QR Code. O servidor detecta <code style="color:#00ff88;background:#041a0f;padding:2px 6px;border-radius:4px;">?role=driver</code> e injeta a interface do motorista.</p>', unsafe_allow_html=True)
-        base_url = st.text_input("URL pública:", "https://smartsurplus-logistics.streamlit.app/")
+        base_url = st.text_input("URL pública:", "https://leandro-rafael-smartsurplus-logistics-app-foiglc.streamlit.app/")
         if not results_df.empty:
             pts = []
             locs_info = []
