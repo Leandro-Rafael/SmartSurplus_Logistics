@@ -107,28 +107,30 @@ def geocode_address(address):
 
 @st.cache_data(show_spinner=False)
 def get_osrm_route(slat, slon, nlat, nlon):
+    time.sleep(0.5) # Proteção contra rate limit (max 1 req/sec)
     url = f"http://router.project-osrm.org/route/v1/driving/{slon},{slat};{nlon},{nlat}?overview=full&geometries=geojson"
     for _ in range(3):
         try:
-            r = requests.get(url, timeout=5)
+            r = requests.get(url, headers={"User-Agent": "SmartSurplus/2.0"}, timeout=5)
             if r.status_code == 200 and r.json().get("code") == "Ok":
                 return [[c[1],c[0]] for c in r.json()["routes"][0]["geometry"]["coordinates"]]
-            time.sleep(0.5)
-        except: time.sleep(0.5)
+            time.sleep(1.0)
+        except: time.sleep(1.0)
     return [[slat,slon],[nlat,nlon]]
 
 @st.cache_data(show_spinner=False)
 def get_osrm_route_multi(coords_list):
     if len(coords_list) < 2: return coords_list
+    time.sleep(0.5) # Proteção contra rate limit
     coords_str = ";".join([f"{lon},{lat}" for lat, lon in coords_list])
     url = f"http://router.project-osrm.org/route/v1/driving/{coords_str}?overview=full&geometries=geojson"
     for _ in range(3):
         try:
-            r = requests.get(url, timeout=5)
+            r = requests.get(url, headers={"User-Agent": "SmartSurplus/2.0"}, timeout=5)
             if r.status_code == 200 and r.json().get("code") == "Ok":
                 return [[c[1],c[0]] for c in r.json()["routes"][0]["geometry"]["coordinates"]]
-            time.sleep(0.5)
-        except: time.sleep(0.5)
+            time.sleep(1.0)
+        except: time.sleep(1.0)
     return [[lat, lon] for lat, lon in coords_list]
 
 if "logged_in" not in st.session_state:
