@@ -118,14 +118,27 @@ if st.query_params.get("role") == "driver":
                 else: st.warning("Preencha todos os campos.")
                 
         with tab2:
-            r_nome = st.text_input("Nome Completo")
-            r_cpf = st.text_input("CPF")
-            r_pix = st.text_input("Chave Pix (Recebimento)")
-            r_nasc = st.date_input("Data de Nascimento")
-            r_senha = st.text_input("Criar Senha", type="password")
-            st.markdown("<p style='color:#9ca3af;font-size:0.8rem;margin-bottom:0;'>Validação Facial (Obrigatória)</p>", unsafe_allow_html=True)
+            st.markdown("<div style='color:#9ca3af;font-size:0.85rem;margin-bottom:16px;text-align:center;'>Preencha os dados abaixo para se tornar um motorista parceiro. <br><b style='color:#00ff88;'>Obrigatório ter no mínimo 18 anos.</b></div>", unsafe_allow_html=True)
+            r_nome = st.text_input("👤 Nome Completo")
+            
+            c1, c2 = st.columns(2)
+            with c1: r_cpf = st.text_input("📄 CPF")
+            with c2: r_pix = st.text_input("💸 Chave Pix")
+            
+            import datetime
+            hoje = datetime.date.today()
+            try: max_date = hoje.replace(year=hoje.year - 18)
+            except ValueError: max_date = hoje.replace(year=hoje.year - 18, day=28)
+            
+            c3, c4 = st.columns(2)
+            with c3: r_nasc = st.date_input("📅 Data de Nascimento", min_value=datetime.date(1920, 1, 1), max_value=max_date, value=max_date)
+            with c4: r_senha = st.text_input("🔑 Criar Senha", type="password")
+            
+            st.markdown("<div style='margin-top:16px;padding:12px;background:#050810;border:1px dashed #1e293b;border-radius:12px;'><p style='color:#38bdf8;font-size:0.8rem;margin-bottom:8px;font-weight:bold;text-align:center;'>📷 Validação Facial (Obrigatória para Segurança)</p>", unsafe_allow_html=True)
             r_foto = st.camera_input("Tirar Foto da Face", label_visibility="collapsed")
-            if st.button("Validar e Cadastrar", use_container_width=True, key="btn_cad"):
+            st.markdown("</div><br>", unsafe_allow_html=True)
+            
+            if st.button("✅ Validar e Cadastrar", use_container_width=True, key="btn_cad"):
                 if r_nome and r_cpf and r_pix and r_senha and r_foto:
                     url = f"{get_sb_url()}/rest/v1/drivers"
                     payload = {"cpf": r_cpf, "nome": r_nome, "pix": r_pix, "nascimento": str(r_nasc), "senha": hashlib.sha256(r_senha.encode()).hexdigest()}
@@ -133,7 +146,7 @@ if st.query_params.get("role") == "driver":
                     if r.status_code in [200, 201, 204]:
                         st.success("Cadastro aprovado! Faça o login na outra aba.")
                     else:
-                        st.error("CPF já cadastrado ou erro de conexão com a Nuvem.")
+                        st.error(f"Erro de conexão com a Nuvem: {r.text}")
                 else: st.warning("Preencha todos os dados e tire a foto.")
         st.stop()
         
