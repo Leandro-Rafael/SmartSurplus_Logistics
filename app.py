@@ -177,11 +177,19 @@ if st.query_params.get("role") == "driver":
             if r.status_code == 200 and r.json():
                 df = pd.DataFrame(r.json())
                 df = df.rename(columns={"fornecedor":"Fornecedor", "ong":"ONG", "qtde_kg":"Qtde_kg", "distancia_km":"Distancia_km"})
-            else: df = pd.DataFrame()
+            else: 
+                st.info("A otimização ainda não foi gerada pelo despachante (banco de dados vazio).")
+                st.stop()
+                
+            if df.empty or "Fornecedor" not in df.columns:
+                st.info("Nenhuma carga disponível no momento.")
+                st.stop()
             
             lotes = df.groupby("Fornecedor").agg({"ONG": lambda x: list(x), "Qtde_kg": "sum", "Distancia_km": "sum"}).reset_index()
             
-            if lotes.empty: st.info("Nenhuma carga disponível no momento."); st.stop()
+            if lotes.empty: 
+                st.info("Nenhuma carga disponível no momento.")
+                st.stop()
             
             veiculo = st.session_state.driver_vehicle
             for i, row in lotes.iterrows():
@@ -219,7 +227,7 @@ if st.query_params.get("role") == "driver":
                     st.rerun()
                 st.markdown("<br>", unsafe_allow_html=True)
         except Exception as e:
-            st.info("A otimização ainda não foi gerada pelo despachante.")
+            st.error(f"Erro interno ao carregar Marketplace: {e}")
         st.stop()
         
     elif step == "gps":
