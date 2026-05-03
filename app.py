@@ -68,60 +68,209 @@ st.markdown("""<style>
 
 # ── DRIVER APP ──
 if st.query_params.get("role") == "driver":
+    import hashlib, urllib.parse
+    
+    def get_sb_headers():
+        try: return {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}", "Content-Type": "application/json"}
+        except: return {}
+    
+    def get_sb_url():
+        try: return st.secrets["supabase"]["url"]
+        except: return ""
+
     st.markdown("""<style>
     .stApp{background:#030712!important;}
     section[data-testid="stSidebar"],header,footer{display:none!important;}
-    .block-container{padding:0!important; max-width: 100% !important;}
-    .gps-panel { position: absolute; bottom: 0; left: 0; right: 0; background: #030712; padding: 24px; border-top: 1px solid #1f2937; border-radius: 24px 24px 0 0; z-index: 1000; box-shadow: 0 -10px 40px rgba(0,0,0,0.8); }
+    .block-container{padding:1rem!important; max-width: 100% !important;}
     [data-testid="stButton"] button{background:#00ff88!important;color:#000!important;border-radius:12px!important;font-weight:800!important;border:none!important; font-family: 'Space Mono', monospace !important; padding: 14px !important;}
-    a.gmaps-btn { display: block; text-align: center; background: #1f2937; color: #f9fafb; text-decoration: none; padding: 14px; border-radius: 12px; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 0.9rem; margin-bottom: 12px; border: 1px solid #374151; transition: all 0.2s; }
-    a.gmaps-btn:hover { background: #374151; color: #fff; }
+    .driver-title { font-family:'Syne',sans-serif; color:#f9fafb; font-size:1.5rem; font-weight:800; margin-bottom: 24px; text-align:center;}
+    [data-testid="stTextInput"] input, [data-testid="stPasswordInput"] input { background:#0f172a !important; color:#fff !important; border:1px solid #1e293b !important;}
+    .lot-card { border: 2px solid #00ff88; border-radius:12px; padding:16px; margin-bottom:16px; background:#0f172a; }
+    .lot-card.yellow { border-color: #fbbf24; }
+    .gps-panel { position: fixed; bottom: 0; left: 0; right: 0; background: #030712; padding: 24px; border-top: 1px solid #1f2937; border-radius: 24px 24px 0 0; z-index: 1000; box-shadow: 0 -10px 40px rgba(0,0,0,0.8); }
     </style>""", unsafe_allow_html=True)
     
-    pts_str = st.query_params.get("pts", "")
-    if not pts_str:
-        st.error("Rota inválida ou não fornecida.")
+    if "driver_logged" not in st.session_state:
+        st.session_state.driver_logged = False
+        st.session_state.driver_data = None
+        st.session_state.driver_step = "auth"
+    
+    step = st.session_state.driver_step
+    
+    if step == "auth":
+        st.markdown('<div class="driver-title">Portal do Motorista</div>', unsafe_allow_html=True)
+        tab1, tab2 = st.tabs(["🔒 Entrar", "📝 Criar Conta"])
+        
+        with tab1:
+            l_cpf = st.text_input("CPF", key="l_cpf")
+            l_senha = st.text_input("Senha", type="password", key="l_senha")
+            if st.button("Acessar Plataforma", use_container_width=True, key="btn_login"):
+                if l_cpf and l_senha:
+                    url = f"{get_sb_url()}/rest/v1/drivers?cpf=eq.{l_cpf}&senha=eq.{hashlib.sha256(l_senha.encode()).hexdigest()}"
+                    r = requests.get(url, headers=get_sb_headers())
+                    if r.status_code == 200 and len(r.json()) > 0:
+                        res = r.json()[0]
+                        st.session_state.driver_logged = True
+                        st.session_state.driver_data = {"nome": res["nome"], "cpf": l_cpf}
+                        st.session_state.driver_step = "vehicle"
+                        st.rerun()
+                    else: st.error("CPF ou Senha incorretos.")
+                else: st.warning("Preencha todos os campos.")
+                
+        with tab2:
+            r_nome = st.text_input("Nome Completo")
+            r_cpf = st.text_input("CPF")
+            r_pix = st.text_input("Chave Pix (Recebimento)")
+            r_nasc = st.date_input("Data de Nascimento")
+            r_senha = st.text_input("Criar Senha", type="password")
+            st.markdown("<p style='color:#9ca3af;font-size:0.8rem;margin-bottom:0;'>Validação Facial (Obrigatória)</p>", unsafe_allow_html=True)
+            r_foto = st.camera_input("Tirar Foto da Face", label_visibility="collapsed")
+            if st.button("Validar e Cadastrar", use_container_width=True, key="btn_cad"):
+                if r_nome and r_cpf and r_pix and r_senha and r_foto:
+                    url = f"{get_sb_url()}/rest/v1/drivers"
+                    payload = {"cpf": r_cpf, "nome": r_nome, "pix": r_pix, "nascimento": str(r_nasc), "senha": hashlib.sha256(r_senha.encode()).hexdigest()}
+                    r = requests.post(url, headers=get_sb_headers(), json=payload, params={"Prefer":"return=minimal"})
+                    if r.status_code in [200, 201, 204]:
+                        st.success("Cadastro aprovado! Faça o login na outra aba.")
+                    else:
+                        st.error("CPF já cadastrado ou erro de conexão com a Nuvem.")
+                else: st.warning("Preencha todos os dados e tire a foto.")
         st.stop()
         
-    coords = []
-    gmaps_pts = []
-    for p in pts_str.split("|"):
-        if "," in p:
-            lat, lon = p.split(",")
-            coords.append((float(lat), float(lon)))
-            gmaps_pts.append(f"{lat},{lon}")
-    
-    gmaps_url = f"https://www.google.com/maps/dir/{'/'.join(gmaps_pts)}"
-    route_geom = get_osrm_route_multi(coords)
-    
-    if coords:
-        m = folium.Map(location=coords[0], zoom_start=14, tiles="CartoDB dark_matter", zoom_control=False)
-        m.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution{display:none!important}</style>"))
-        plugins.AntPath(route_geom, color="#00ff88", weight=5, pulse_color="#030712", delay=800).add_to(m)
+    elif step == "vehicle":
+        nome = st.session_state.driver_data["nome"].split()[0]
+        st.markdown(f'<div class="driver-title">Bem-vindo, {nome}</div>', unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center;color:#9ca3af;margin-bottom:24px;'>Qual veículo você está operando hoje?</p>", unsafe_allow_html=True)
         
-        for i, c in enumerate(coords):
-            cor = "#38bdf8" if i > 0 else "#00ff88"
-            icone = "A" if i == 0 else str(i+1)
-            folium.Marker(c, icon=folium.DivIcon(html=f'<div style="background:{cor};width:24px;height:24px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#000;">{icone}</div>',icon_size=(24,24),icon_anchor=(12,12))).add_to(m)
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("🛻 Caminhonete\n(Até 1.000 kg)", use_container_width=True):
+                st.session_state.driver_vehicle = "pickup"
+                st.session_state.driver_step = "marketplace"
+                st.rerun()
+        with c2:
+            if st.button("🚛 Caminhão\n(Acima de 1 Ton)", use_container_width=True):
+                st.session_state.driver_vehicle = "truck"
+                st.session_state.driver_step = "marketplace"
+                st.rerun()
+        st.stop()
+        
+    elif step == "marketplace":
+        st.markdown('<div class="driver-title">Marketplace de Cargas</div>', unsafe_allow_html=True)
+        try:
+            import pandas as pd
+            url = f"{get_sb_url()}/rest/v1/marketplace_results"
+            r = requests.get(url, headers=get_sb_headers())
+            if r.status_code == 200 and r.json():
+                df = pd.DataFrame(r.json())
+                df = df.rename(columns={"fornecedor":"Fornecedor", "ong":"ONG", "qtde_kg":"Qtde_kg", "distancia_km":"Distancia_km"})
+            else: df = pd.DataFrame()
             
-        st_folium(m, width="100%", height=650, returned_objects=[])
-    
-    st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
-    st.markdown('<div style="color:#9ca3af;font-size:.7rem;letter-spacing:2px;margin-bottom:12px;text-transform:uppercase;">SmartSurplus GPS // Múltiplas Paradas</div>', unsafe_allow_html=True)
-    st.markdown(f'<a href="{gmaps_url}" target="_blank" class="gmaps-btn">📍 ABRIR NO GOOGLE MAPS</a>', unsafe_allow_html=True)
-    
-    drive_state = st.session_state.get("drive_state", "pending")
-    if drive_state == "pending":
-        if st.button("🚀 INICIAR ROTA (OSRM)", use_container_width=True):
-            st.session_state["drive_state"] = "transit"; st.rerun()
-    elif drive_state == "transit":
-        st.success("🟢 NAVEGAÇÃO ATIVA")
-        if st.button("✅ FINALIZAR ROTA", use_container_width=True):
-            st.session_state["drive_state"] = "completed"; st.rerun()
-    elif drive_state == "completed":
-        st.info("📦 Rota finalizada e registrada no blockchain.")
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
+            lotes = df.groupby("Fornecedor").agg({"ONG": lambda x: list(x), "Qtde_kg": "sum", "Distancia_km": "sum"}).reset_index()
+            
+            if lotes.empty: st.info("Nenhuma carga disponível no momento."); st.stop()
+            
+            veiculo = st.session_state.driver_vehicle
+            for i, row in lotes.iterrows():
+                lucro = (row["Qtde_kg"] * 0.10) + (row["Distancia_km"] * 0.50)
+                
+                is_adv = True
+                if veiculo == "pickup" and row["Qtde_kg"] > 1000: is_adv = False
+                if veiculo == "truck" and row["Qtde_kg"] < 300: is_adv = False
+                
+                c_border = "#00ff88" if is_adv else "#fbbf24"
+                c_status = "🟢 Rota Otimizada p/ Seu Veículo" if is_adv else "🟡 Carga Desbalanceada p/ Seu Veículo"
+                
+                st.markdown(f"""
+                <div style="border: 2px solid {c_border}; border-radius:12px; padding:16px; margin-bottom:8px; background:#0f172a;">
+                    <div style="color:{c_border}; font-size:0.7rem; font-weight:bold; margin-bottom:8px;">{c_status}</div>
+                    <div style="font-size:1.1rem; color:#fff; font-weight:bold;">Coleta: {row['Fornecedor']}</div>
+                    <div style="color:#9ca3af; font-size:0.85rem; margin-top:4px;">Entregas: {len(row['ONG'])} paradas</div>
+                    <div style="display:flex; justify-content:space-between; margin-top:12px; border-top:1px solid #1e293b; padding-top:12px;">
+                        <div>
+                            <div style="color:#64748b; font-size:0.7rem;">Carga Total</div>
+                            <div style="color:#f8fafc; font-weight:bold;">{row['Qtde_kg']:.0f} kg</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="color:#64748b; font-size:0.7rem;">Lucro Estimado</div>
+                            <div style="color:#00ff88; font-weight:bold; font-size:1.2rem;">R$ {lucro:.2f}</div>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("ACEITAR FRETE", key=f"btn_acc_{i}", use_container_width=True):
+                    st.session_state.driver_selected_lote = row["Fornecedor"]
+                    st.session_state.driver_lucro = lucro
+                    st.session_state.driver_color = c_border
+                    st.session_state.driver_step = "gps"
+                    st.rerun()
+                st.markdown("<br>", unsafe_allow_html=True)
+        except Exception as e:
+            st.info("A otimização ainda não foi gerada pelo despachante.")
+        st.stop()
+        
+    elif step == "gps":
+        st.markdown("""<style>.block-container{padding:0!important;}</style>""", unsafe_allow_html=True)
+        lote_id = st.session_state.driver_selected_lote
+        lucro = st.session_state.driver_lucro
+        cor = st.session_state.driver_color
+        
+        import pandas as pd
+        url_res = f"{get_sb_url()}/rest/v1/marketplace_results?fornecedor=eq.{urllib.parse.quote(lote_id)}"
+        r_res = requests.get(url_res, headers=get_sb_headers())
+        df = pd.DataFrame(r_res.json()).rename(columns={"fornecedor":"Fornecedor", "ong":"ONG", "qtde_kg":"Qtde_kg", "distancia_km":"Distancia_km"}) if r_res.status_code == 200 and r_res.json() else pd.DataFrame()
+        
+        url_sup = f"{get_sb_url()}/rest/v1/marketplace_suppliers"
+        r_sup = requests.get(url_sup, headers=get_sb_headers())
+        sup_df = pd.DataFrame(r_sup.json()).set_index("nome") if r_sup.status_code == 200 and r_sup.json() else pd.DataFrame()
+        
+        url_ong = f"{get_sb_url()}/rest/v1/marketplace_ngos"
+        r_ong = requests.get(url_ong, headers=get_sb_headers())
+        ong_df = pd.DataFrame(r_ong.json()).set_index("nome") if r_ong.status_code == 200 and r_ong.json() else pd.DataFrame()
+        
+        coords = []
+        if lote_id in sup_df.index:
+            s_lat, s_lon = sup_df.loc[lote_id, "lat"], sup_df.loc[lote_id, "lon"]
+            coords.append((float(s_lat), float(s_lon)))
+            
+        for _, r in df.iterrows():
+            ong_name = r["ONG"]
+            if ong_name in ong_df.index:
+                n_lat, n_lon = ong_df.loc[ong_name, "lat"], ong_df.loc[ong_name, "lon"]
+                coords.append((float(n_lat), float(n_lon)))
+                
+        route_geom = get_osrm_route_multi(coords)
+        
+        if coords:
+            m = folium.Map(location=coords[0], zoom_start=13, tiles="CartoDB dark_matter", zoom_control=False)
+            m.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution{display:none!important}</style>"))
+            plugins.AntPath(route_geom, color=cor, weight=5, pulse_color="#030712", delay=800).add_to(m)
+            
+            for i, c in enumerate(coords):
+                icone = "A" if i == 0 else str(i+1)
+                m_cor = cor if i > 0 else "#ffffff"
+                folium.Marker(c, icon=folium.DivIcon(html=f'<div style="background:{m_cor};width:24px;height:24px;border-radius:50%;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#000;">{icone}</div>',icon_size=(24,24),icon_anchor=(12,12))).add_to(m)
+            st_folium(m, width="100%", height=650, returned_objects=[])
+        
+        st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex;justify-content:space-between;margin-bottom:12px;"><div style="color:#9ca3af;font-size:.7rem;letter-spacing:2px;text-transform:uppercase;">Navegação // GPS</div><div style="color:{cor};font-size:.9rem;font-weight:bold;font-family:monospace;">Lucro: R$ {lucro:.2f}</div></div>', unsafe_allow_html=True)
+        
+        drive_state = st.session_state.get("drive_state", "pending")
+        if drive_state == "pending":
+            if st.button("🚀 INICIAR CORRIDA", use_container_width=True):
+                st.session_state["drive_state"] = "transit"; st.rerun()
+        elif drive_state == "transit":
+            st.success("🟢 NAVEGAÇÃO ATIVA")
+            if st.button("✅ FINALIZAR LOTE", use_container_width=True):
+                st.session_state["drive_state"] = "completed"; st.rerun()
+        elif drive_state == "completed":
+            st.info("📦 Rota finalizada e valor depositado no Pix.")
+            if st.button("Voltar ao Marketplace", use_container_width=True):
+                st.session_state.driver_step = "marketplace"
+                st.session_state.drive_state = "pending"
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
@@ -678,6 +827,26 @@ else:
         caos = simulate_current_scenario(sup, ong, dist_dict)
         res, sur, dfc, opt = run_optimization(sup, ong, dist_dict)
         st.session_state.update({"results":res,"surplus_df":sur,"deficit_df":dfc,"caos":caos,"opt":opt})
+        
+        # Salvar resultados no Supabase
+        try:
+            h = {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}", "Content-Type": "application/json"}
+            u = st.secrets["supabase"]["url"]
+            requests.delete(f"{u}/rest/v1/marketplace_results?id=gte.0", headers=h)
+            requests.delete(f"{u}/rest/v1/marketplace_suppliers?lat=gte.-90", headers=h)
+            requests.delete(f"{u}/rest/v1/marketplace_ngos?lat=gte.-90", headers=h)
+            
+            if not res.empty: 
+                r_renamed = res.rename(columns={"Fornecedor":"fornecedor", "ONG":"ong", "Qtde_kg":"qtde_kg", "Distancia_km":"distancia_km"})
+                requests.post(f"{u}/rest/v1/marketplace_results", headers=h, json=r_renamed.to_dict(orient="records"), params={"Prefer":"return=minimal"})
+            if not sup.empty: 
+                s_renamed = sup.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
+                requests.post(f"{u}/rest/v1/marketplace_suppliers", headers=h, json=s_renamed.to_dict(orient="records"), params={"Prefer":"return=minimal"})
+            if not ong.empty: 
+                o_renamed = ong.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
+                requests.post(f"{u}/rest/v1/marketplace_ngos", headers=h, json=o_renamed.to_dict(orient="records"), params={"Prefer":"return=minimal"})
+        except Exception as e:
+            st.error(f"Erro ao sincronizar com a nuvem (Supabase): {e}")
 
     # ── SIDEBAR ──
     with st.sidebar:
@@ -1028,28 +1197,20 @@ h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
             pts_str = "|".join(clean_pts)
             
             if base_url.endswith("/"): base_url = base_url[:-1]
-            link_gps = f"{base_url}/?role=driver&pts={pts_str}"
-            link_gmaps = f"https://www.google.com/maps/dir/{'/'.join(gmaps_pts)}"
+            link_gps = f"{base_url}/?role=driver"
             
             import qrcode
             
-            cq1, cq2, ci = st.columns([1, 1, 2])
+            cq1, ci = st.columns([1, 2])
             with cq1:
-                st.markdown('<div style="text-align:center;font-size:0.75rem;color:#00ff88;margin-bottom:8px;font-family:monospace;">📍 GPS NATIVO</div>', unsafe_allow_html=True)
+                st.markdown('<div style="text-align:center;font-size:0.75rem;color:#00ff88;margin-bottom:8px;font-family:monospace;">📍 PORTAL DO MOTORISTA</div>', unsafe_allow_html=True)
                 qr = qrcode.QRCode(version=1, box_size=8, border=2)
                 qr.add_data(link_gps); qr.make(fit=True)
                 img = qr.make_image(fill_color="#00ff88", back_color="#030712")
                 buf = io.BytesIO(); img.save(buf, format="PNG")
                 st.image(buf, use_container_width=True)
-            with cq2:
-                st.markdown('<div style="text-align:center;font-size:0.75rem;color:#38bdf8;margin-bottom:8px;font-family:monospace;">🗺 GOOGLE MAPS</div>', unsafe_allow_html=True)
-                qr2 = qrcode.QRCode(version=1, box_size=8, border=2)
-                qr2.add_data(link_gmaps); qr2.make(fit=True)
-                img2 = qr2.make_image(fill_color="#38bdf8", back_color="#030712")
-                buf2 = io.BytesIO(); img2.save(buf2, format="PNG")
-                st.image(buf2, use_container_width=True)
             with ci:
                 loc_html = "<br>".join(locs_info)
-                st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#00ff88;"></div><div class="mc-label">Escolha sua Navegação</div><div style="color:#f9fafb;font-size:.85rem;padding-top:8px;line-height:1.6;">{loc_html}<br><span style="color:#6b7280;font-size:0.75rem;margin-top:6px;display:inline-block;">+ {max(0, len(clean_pts)-4)} paradas programadas na rota</span></div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#00ff88;"></div><div class="mc-label">Navegação Integrada</div><div style="color:#f9fafb;font-size:.85rem;padding-top:8px;line-height:1.6;">{loc_html}<br><span style="color:#6b7280;font-size:0.75rem;margin-top:6px;display:inline-block;">+ Todos os dados foram sincronizados com o Marketplace. Os motoristas já podem escolher suas corridas.</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="empty"><div class="empty-icon">📱</div><div class="empty-title">Sem rota</div><div class="empty-sub">Calcule a otimização para gerar os QRs</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="empty"><div class="empty-icon">📱</div><div class="empty-title">Sem lotes</div><div class="empty-sub">Calcule a otimização para abastecer o Marketplace</div></div>', unsafe_allow_html=True)

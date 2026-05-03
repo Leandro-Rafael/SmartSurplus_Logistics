@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR Code SmartSurplus</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #050a12;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Rajdhani', sans-serif;
+    overflow: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,220,130,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,220,130,0.06) 1px, transparent 1px);
+    background-size: 40px 40px;
+    animation: gridMove 8s linear infinite;
+  }
+
+  @keyframes gridMove {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(40px); }
+  }
+
+  /* Radial glow center */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(0,220,130,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .card {
+    position: relative;
+    z-index: 10;
+    background: rgba(10, 20, 30, 0.92);
+    border: 1px solid rgba(0,220,130,0.3);
+    border-radius: 24px;
+    padding: 48px 44px 40px;
+    text-align: center;
+    box-shadow:
+      0 0 0 1px rgba(0,220,130,0.08),
+      0 0 40px rgba(0,220,130,0.15),
+      0 0 80px rgba(0,220,130,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.05);
+    backdrop-filter: blur(20px);
+    max-width: 420px;
+    width: 90vw;
+    animation: fadeIn 0.8s ease both;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* Corner decorations */
+  .corner {
+    position: absolute;
+    width: 20px; height: 20px;
+    border-color: #00dc82;
+    border-style: solid;
+  }
+  .corner-tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; border-radius: 4px 0 0 0; }
+  .corner-tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; border-radius: 0 4px 0 0; }
+  .corner-bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; border-radius: 0 0 0 4px; }
+  .corner-br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; border-radius: 0 0 4px 0; }
+
+  .tag {
+    display: inline-block;
+    background: rgba(0,220,130,0.12);
+    border: 1px solid rgba(0,220,130,0.4);
+    color: #00dc82;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 4px 14px;
+    border-radius: 20px;
+    margin-bottom: 18px;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+  }
+
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: 1px;
+    line-height: 1.2;
+    margin-bottom: 6px;
+    text-shadow: 0 0 20px rgba(0,220,130,0.4);
+  }
+
+  h1 span {
+    color: #00dc82;
+    display: block;
+  }
+
+  .subtitle {
+    color: rgba(255,255,255,0.45);
+    font-size: 13px;
+    letter-spacing: 1px;
+    margin-bottom: 32px;
+    font-weight: 400;
+  }
+
+  /* QR wrapper */
+  .qr-outer {
+    position: relative;
+    display: inline-block;
+    margin-bottom: 28px;
+  }
+
+  .qr-ring {
+    position: absolute;
+    inset: -12px;
+    border-radius: 20px;
+    border: 2px solid transparent;
+    background: linear-gradient(135deg, #00dc82, #00aaff, #00dc82) border-box;
+    -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: destination-out;
+    mask-composite: exclude;
+    animation: rotateBorder 4s linear infinite;
+  }
+
+  @keyframes rotateBorder {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+  }
+
+  .qr-glow {
+    position: absolute;
+    inset: -6px;
+    border-radius: 18px;
+    box-shadow: 0 0 30px rgba(0,220,130,0.35), 0 0 60px rgba(0,220,130,0.15);
+    pointer-events: none;
+  }
+
+  #qrcode {
+    position: relative;
+    z-index: 1;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    padding: 12px;
+  }
+
+  #qrcode canvas,
+  #qrcode img {
+    display: block;
+    border-radius: 4px;
+  }
+
+  /* Logo overlay */
+  .logo-overlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    background: #00dc82;
+    border-radius: 10px;
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 13px;
+    color: #050a12;
+    letter-spacing: -1px;
+    box-shadow: 0 0 0 3px #fff, 0 0 16px rgba(0,220,130,0.6);
+  }
+
+  .scan-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: rgba(255,255,255,0.5);
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  .scan-hint::before,
+  .scan-hint::after {
+    content: '';
+    height: 1px;
+    width: 40px;
+    background: rgba(0,220,130,0.3);
+  }
+
+  .url-box {
+    background: rgba(0,220,130,0.06);
+    border: 1px solid rgba(0,220,130,0.2);
+    border-radius: 10px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  .url-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #00dc82;
+    box-shadow: 0 0 8px #00dc82;
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .url-text {
+    color: rgba(255,255,255,0.55);
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    font-family: 'Rajdhani', sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 260px;
+  }
+
+  /* Floating particles */
+  .particles {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 1;
+  }
+
+  .particle {
+    position: absolute;
+    width: 3px; height: 3px;
+    border-radius: 50%;
+    background: #00dc82;
+    opacity: 0;
+    animation: floatUp linear infinite;
+  }
+
+  @keyframes floatUp {
+    0% { opacity: 0; transform: translateY(0) scale(0); }
+    10% { opacity: 0.6; transform: translateY(-20px) scale(1); }
+    90% { opacity: 0.2; }
+    100% { opacity: 0; transform: translateY(-100vh) scale(0.5); }
+  }
+</style>
+</head>
+<body>
+
+<div class="particles" id="particles"></div>
+
+<div class="card">
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <div class="tag">● Acesso Rápido</div>
+
+  <h1>SMART<span>SURPLUS</span></h1>
+  <p class="subtitle">Logistics Intelligence Platform</p>
+
+  <div class="qr-outer">
+    <div class="qr-ring"></div>
+    <div class="qr-glow"></div>
+    <div id="qrcode"></div>
+    <div class="logo-overlay">SS</div>
+  </div>
+
+  <div class="scan-hint">Escaneie para acessar</div>
+
+  <div class="url-box">
+    <div class="url-dot"></div>
+    <div class="url-text">leandro-rafael-smartsurplus-logistics-app</div>
+  </div>
+</div>
+
+<script>
+  // Generate QR code
+  new QRCode(document.getElementById("qrcode"), {
+    text: "https://leandro-rafael-smartsurplus-logistics-app-foiglc.streamlit.app/",
+    width: 220,
+    height: 220,
+    colorDark: "#050a12",
+    colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.H
+  });
+
+  // Floating particles
+  const container = document.getElementById('particles');
+  for (let i = 0; i < 25; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + 'vw';
+    p.style.bottom = '-10px';
+    p.style.animationDuration = (6 + Math.random() * 10) + 's';
+    p.style.animationDelay = (Math.random() * 8) + 's';
+    p.style.width = p.style.height = (2 + Math.random() * 3) + 'px';
+    p.style.opacity = Math.random() * 0.7;
+    container.appendChild(p);
+  }
+</script>
+</body>
+</html>
