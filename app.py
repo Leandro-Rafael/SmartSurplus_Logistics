@@ -859,13 +859,16 @@ else:
             
             if not res.empty: 
                 r_renamed = res.rename(columns={"Fornecedor":"fornecedor", "ONG":"ong", "Qtde_kg":"qtde_kg", "Distancia_km":"distancia_km"})
-                requests.post(f"{u}/rest/v1/marketplace_results", headers=h, json=r_renamed.to_dict(orient="records"))
+                r = requests.post(f"{u}/rest/v1/marketplace_results", headers=h, json=r_renamed.to_dict(orient="records"))
+                if r.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (Results): {r.text}")
             if not sup.empty: 
                 s_renamed = sup.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
-                requests.post(f"{u}/rest/v1/marketplace_suppliers", headers=h, json=s_renamed.to_dict(orient="records"))
+                r2 = requests.post(f"{u}/rest/v1/marketplace_suppliers", headers=h, json=s_renamed.to_dict(orient="records"))
+                if r2.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (Suppliers): {r2.text}")
             if not ong.empty: 
                 o_renamed = ong.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
-                requests.post(f"{u}/rest/v1/marketplace_ngos", headers=h, json=o_renamed.to_dict(orient="records"))
+                r3 = requests.post(f"{u}/rest/v1/marketplace_ngos", headers=h, json=o_renamed.to_dict(orient="records"))
+                if r3.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (NGOs): {r3.text}")
         except Exception as e:
             st.error(f"Erro ao sincronizar com a nuvem (Supabase): {e}")
 
