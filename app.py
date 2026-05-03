@@ -142,7 +142,7 @@ if st.query_params.get("role") == "driver":
                 if r_nome and r_cpf and r_pix and r_senha and r_foto:
                     url = f"{get_sb_url()}/rest/v1/drivers"
                     payload = {"cpf": r_cpf, "nome": r_nome, "pix": r_pix, "nascimento": str(r_nasc), "senha": hashlib.sha256(r_senha.encode()).hexdigest()}
-                    r = requests.post(url, headers=get_sb_headers(), json=payload, params={"Prefer":"return=minimal"})
+                    r = requests.post(url, headers=get_sb_headers(), json=payload)
                     if r.status_code in [200, 201, 204]:
                         st.success("Cadastro aprovado! Faça o login na outra aba.")
                     else:
@@ -851,13 +851,13 @@ else:
             
             if not res.empty: 
                 r_renamed = res.rename(columns={"Fornecedor":"fornecedor", "ONG":"ong", "Qtde_kg":"qtde_kg", "Distancia_km":"distancia_km"})
-                requests.post(f"{u}/rest/v1/marketplace_results", headers=h, json=r_renamed.to_dict(orient="records"), params={"Prefer":"return=minimal"})
+                requests.post(f"{u}/rest/v1/marketplace_results", headers=h, json=r_renamed.to_dict(orient="records"))
             if not sup.empty: 
                 s_renamed = sup.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
-                requests.post(f"{u}/rest/v1/marketplace_suppliers", headers=h, json=s_renamed.to_dict(orient="records"), params={"Prefer":"return=minimal"})
+                requests.post(f"{u}/rest/v1/marketplace_suppliers", headers=h, json=s_renamed.to_dict(orient="records"))
             if not ong.empty: 
                 o_renamed = ong.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
-                requests.post(f"{u}/rest/v1/marketplace_ngos", headers=h, json=o_renamed.to_dict(orient="records"), params={"Prefer":"return=minimal"})
+                requests.post(f"{u}/rest/v1/marketplace_ngos", headers=h, json=o_renamed.to_dict(orient="records"))
         except Exception as e:
             st.error(f"Erro ao sincronizar com a nuvem (Supabase): {e}")
 
