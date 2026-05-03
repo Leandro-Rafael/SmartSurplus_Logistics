@@ -18,78 +18,6 @@ st.set_page_config(
     page_icon="⬡"
 )
 
-# ── WATERMARK REMOVER ──
-st.markdown("""<style>
-[data-testid="main-menu-list"] + div { display: none !important; }
-</style>""", unsafe_allow_html=True)
-
-# ── DRIVER APP ──
-if st.query_params.get("role") == "driver":
-    st.markdown("""<style>
-    .stApp{background:#030712!important;}
-    section[data-testid="stSidebar"],header,footer{display:none!important;}
-    .block-container{padding:0!important; max-width: 100% !important;}
-    .gps-panel { position: absolute; bottom: 0; left: 0; right: 0; background: #030712; padding: 24px; border-top: 1px solid #1f2937; border-radius: 24px 24px 0 0; z-index: 1000; box-shadow: 0 -10px 40px rgba(0,0,0,0.8); }
-    [data-testid="stButton"] button{background:#00ff88!important;color:#000!important;border-radius:12px!important;font-weight:800!important;border:none!important; font-family: 'Space Mono', monospace !important; padding: 14px !important;}
-    a.gmaps-btn { display: block; text-align: center; background: #1f2937; color: #f9fafb; text-decoration: none; padding: 14px; border-radius: 12px; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 0.9rem; margin-bottom: 12px; border: 1px solid #374151; transition: all 0.2s; }
-    a.gmaps-btn:hover { background: #374151; color: #fff; }
-    </style>""", unsafe_allow_html=True)
-    
-    pts_str = st.query_params.get("pts", "")
-    if not pts_str:
-        st.error("Rota inválida ou não fornecida.")
-        st.stop()
-        
-    # Extrair coordenadas e gerar URL do Google Maps
-    coords = []
-    gmaps_pts = []
-    for p in pts_str.split("|"):
-        if "," in p:
-            lat, lon = p.split(",")
-            coords.append((float(lat), float(lon)))
-            gmaps_pts.append(f"{lat},{lon}")
-    
-    gmaps_url = f"https://www.google.com/maps/dir/{'/'.join(gmaps_pts)}"
-    
-    # Gerar rota OSRM
-    from data_generator import get_osrm_route_multi # we'll put it there or here, wait, let's define it inside or just call it.
-    # We can just define get_osrm_route_multi right after get_osrm_route.
-    # I'll just use it assuming it exists.
-    
-    route_geom = get_osrm_route_multi(coords)
-    
-    # Criar Mapa GPS
-    if coords:
-        m = folium.Map(location=coords[0], zoom_start=14, tiles="CartoDB dark_matter", zoom_control=False)
-        m.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution{display:none!important}</style>"))
-        plugins.AntPath(route_geom, color="#00ff88", weight=5, pulse_color="#030712", delay=800).add_to(m)
-        
-        # Marcadores
-        for i, c in enumerate(coords):
-            cor = "#38bdf8" if i > 0 else "#00ff88"
-            icone = "A" if i == 0 else str(i+1)
-            folium.Marker(c, icon=folium.DivIcon(html=f'<div style="background:{cor};width:24px;height:24px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#000;">{icone}</div>',icon_size=(24,24),icon_anchor=(12,12))).add_to(m)
-            
-        st_folium(m, width="100%", height=650, returned_objects=[])
-    
-    # Painel Inferior
-    st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
-    st.markdown('<div style="color:#9ca3af;font-size:.7rem;letter-spacing:2px;margin-bottom:12px;text-transform:uppercase;">SmartSurplus GPS // Múltiplas Paradas</div>', unsafe_allow_html=True)
-    st.markdown(f'<a href="{gmaps_url}" target="_blank" class="gmaps-btn">📍 ABRIR NO GOOGLE MAPS</a>', unsafe_allow_html=True)
-    
-    drive_state = st.session_state.get("drive_state", "pending")
-    if drive_state == "pending":
-        if st.button("🚀 INICIAR ROTA (OSRM)", use_container_width=True):
-            st.session_state["drive_state"] = "transit"; st.rerun()
-    elif drive_state == "transit":
-        st.success("🟢 NAVEGAÇÃO ATIVA")
-        if st.button("✅ FINALIZAR ROTA", use_container_width=True):
-            st.session_state["drive_state"] = "completed"; st.rerun()
-    elif drive_state == "completed":
-        st.info("📦 Rota finalizada e registrada no blockchain.")
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
-
 # ── IMPORTS ──
 from data_generator import generate_suppliers, generate_ngos, calculate_distance_matrix, haversine
 from optimization import run_optimization, simulate_current_scenario, apply_disaster_to_distances
@@ -132,6 +60,68 @@ def get_osrm_route_multi(coords_list):
             time.sleep(1.0)
         except: time.sleep(1.0)
     return [[lat, lon] for lat, lon in coords_list]
+
+# ── WATERMARK REMOVER ──
+st.markdown("""<style>
+[data-testid="main-menu-list"] + div { display: none !important; }
+</style>""", unsafe_allow_html=True)
+
+# ── DRIVER APP ──
+if st.query_params.get("role") == "driver":
+    st.markdown("""<style>
+    .stApp{background:#030712!important;}
+    section[data-testid="stSidebar"],header,footer{display:none!important;}
+    .block-container{padding:0!important; max-width: 100% !important;}
+    .gps-panel { position: absolute; bottom: 0; left: 0; right: 0; background: #030712; padding: 24px; border-top: 1px solid #1f2937; border-radius: 24px 24px 0 0; z-index: 1000; box-shadow: 0 -10px 40px rgba(0,0,0,0.8); }
+    [data-testid="stButton"] button{background:#00ff88!important;color:#000!important;border-radius:12px!important;font-weight:800!important;border:none!important; font-family: 'Space Mono', monospace !important; padding: 14px !important;}
+    a.gmaps-btn { display: block; text-align: center; background: #1f2937; color: #f9fafb; text-decoration: none; padding: 14px; border-radius: 12px; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 0.9rem; margin-bottom: 12px; border: 1px solid #374151; transition: all 0.2s; }
+    a.gmaps-btn:hover { background: #374151; color: #fff; }
+    </style>""", unsafe_allow_html=True)
+    
+    pts_str = st.query_params.get("pts", "")
+    if not pts_str:
+        st.error("Rota inválida ou não fornecida.")
+        st.stop()
+        
+    coords = []
+    gmaps_pts = []
+    for p in pts_str.split("|"):
+        if "," in p:
+            lat, lon = p.split(",")
+            coords.append((float(lat), float(lon)))
+            gmaps_pts.append(f"{lat},{lon}")
+    
+    gmaps_url = f"https://www.google.com/maps/dir/{'/'.join(gmaps_pts)}"
+    route_geom = get_osrm_route_multi(coords)
+    
+    if coords:
+        m = folium.Map(location=coords[0], zoom_start=14, tiles="CartoDB dark_matter", zoom_control=False)
+        m.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution{display:none!important}</style>"))
+        plugins.AntPath(route_geom, color="#00ff88", weight=5, pulse_color="#030712", delay=800).add_to(m)
+        
+        for i, c in enumerate(coords):
+            cor = "#38bdf8" if i > 0 else "#00ff88"
+            icone = "A" if i == 0 else str(i+1)
+            folium.Marker(c, icon=folium.DivIcon(html=f'<div style="background:{cor};width:24px;height:24px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#000;">{icone}</div>',icon_size=(24,24),icon_anchor=(12,12))).add_to(m)
+            
+        st_folium(m, width="100%", height=650, returned_objects=[])
+    
+    st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
+    st.markdown('<div style="color:#9ca3af;font-size:.7rem;letter-spacing:2px;margin-bottom:12px;text-transform:uppercase;">SmartSurplus GPS // Múltiplas Paradas</div>', unsafe_allow_html=True)
+    st.markdown(f'<a href="{gmaps_url}" target="_blank" class="gmaps-btn">📍 ABRIR NO GOOGLE MAPS</a>', unsafe_allow_html=True)
+    
+    drive_state = st.session_state.get("drive_state", "pending")
+    if drive_state == "pending":
+        if st.button("🚀 INICIAR ROTA (OSRM)", use_container_width=True):
+            st.session_state["drive_state"] = "transit"; st.rerun()
+    elif drive_state == "transit":
+        st.success("🟢 NAVEGAÇÃO ATIVA")
+        if st.button("✅ FINALIZAR ROTA", use_container_width=True):
+            st.session_state["drive_state"] = "completed"; st.rerun()
+    elif drive_state == "completed":
+        st.info("📦 Rota finalizada e registrada no blockchain.")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
@@ -1027,24 +1017,39 @@ h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
                     if len(locs_info) < 4: locs_info.append(f"<span style='color:#38bdf8'>Entrega:</span> {nc.loc[r['ONG'], 'Nome']}")
             
             clean_pts = []
+            gmaps_pts = []
             for p in pts:
-                if not clean_pts or clean_pts[-1] != p: clean_pts.append(p)
+                if not clean_pts or clean_pts[-1] != p: 
+                    clean_pts.append(p)
+                    lat, lon = p.split(",")
+                    gmaps_pts.append(f"{lat},{lon}")
             clean_pts = clean_pts[:8]
+            gmaps_pts = gmaps_pts[:8]
             pts_str = "|".join(clean_pts)
             
             if base_url.endswith("/"): base_url = base_url[:-1]
-            link = f"{base_url}/?role=driver&pts={pts_str}"
+            link_gps = f"{base_url}/?role=driver&pts={pts_str}"
+            link_gmaps = f"https://www.google.com/maps/dir/{'/'.join(gmaps_pts)}"
             
-            cq, ci = st.columns([1,2])
-            with cq:
-                import qrcode
-                qr = qrcode.QRCode(version=1, box_size=9, border=3)
-                qr.add_data(link); qr.make(fit=True)
+            import qrcode
+            
+            cq1, cq2, ci = st.columns([1, 1, 2])
+            with cq1:
+                st.markdown('<div style="text-align:center;font-size:0.75rem;color:#00ff88;margin-bottom:8px;font-family:monospace;">📍 GPS NATIVO</div>', unsafe_allow_html=True)
+                qr = qrcode.QRCode(version=1, box_size=8, border=2)
+                qr.add_data(link_gps); qr.make(fit=True)
                 img = qr.make_image(fill_color="#00ff88", back_color="#030712")
                 buf = io.BytesIO(); img.save(buf, format="PNG")
                 st.image(buf, use_container_width=True)
+            with cq2:
+                st.markdown('<div style="text-align:center;font-size:0.75rem;color:#38bdf8;margin-bottom:8px;font-family:monospace;">🗺 GOOGLE MAPS</div>', unsafe_allow_html=True)
+                qr2 = qrcode.QRCode(version=1, box_size=8, border=2)
+                qr2.add_data(link_gmaps); qr2.make(fit=True)
+                img2 = qr2.make_image(fill_color="#38bdf8", back_color="#030712")
+                buf2 = io.BytesIO(); img2.save(buf2, format="PNG")
+                st.image(buf2, use_container_width=True)
             with ci:
                 loc_html = "<br>".join(locs_info)
-                st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#00ff88;"></div><div class="mc-label">GPS Multi-Paradas (Prévia)</div><div style="color:#f9fafb;font-size:.85rem;padding-top:8px;line-height:1.6;">{loc_html}<br><span style="color:#6b7280;font-size:0.75rem;margin-top:6px;display:inline-block;">+ {max(0, len(clean_pts)-4)} paradas programadas na rota</span></div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#00ff88;"></div><div class="mc-label">Escolha sua Navegação</div><div style="color:#f9fafb;font-size:.85rem;padding-top:8px;line-height:1.6;">{loc_html}<br><span style="color:#6b7280;font-size:0.75rem;margin-top:6px;display:inline-block;">+ {max(0, len(clean_pts)-4)} paradas programadas na rota</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="empty"><div class="empty-icon">📱</div><div class="empty-title">Sem rota</div><div class="empty-sub">Calcule a otimização para gerar o QR</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="empty"><div class="empty-icon">📱</div><div class="empty-title">Sem rota</div><div class="empty-sub">Calcule a otimização para gerar os QRs</div></div>', unsafe_allow_html=True)
