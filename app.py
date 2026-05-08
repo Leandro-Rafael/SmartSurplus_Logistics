@@ -859,6 +859,7 @@ else:
             
             if not res.empty: 
                 r_renamed = res.rename(columns={"Fornecedor":"fornecedor", "ONG":"ong", "Qtde_kg":"qtde_kg", "Distancia_km":"distancia_km"})
+                r_renamed = r_renamed[["fornecedor", "ong", "qtde_kg", "distancia_km"]]
                 r = requests.post(f"{u}/rest/v1/marketplace_results", headers=h, json=r_renamed.to_dict(orient="records"))
                 if r.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (Results): {r.text}")
             if not sup.empty: 
