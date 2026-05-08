@@ -164,10 +164,27 @@ if st.query_params.get("role") == "driver":
         with c2:
             if st.button("🚛 Caminhão\n(Acima de 1 Ton)", use_container_width=True):
                 st.session_state.driver_vehicle = "truck"
-                st.session_state.driver_step = "marketplace"
+                st.session_state.driver_step = "truck_form"
                 st.rerun()
         st.stop()
         
+    elif step == "truck_form":
+        st.markdown('<div class="driver-title">Ficha do Caminhão</div>', unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center;color:#9ca3af;margin-bottom:24px;'>Por favor, insira as especificações do seu veículo para garantir rotas compatíveis.</p>", unsafe_allow_html=True)
+        with st.form("form_truck"):
+            capacidade = st.number_input("Capacidade Suportada (kg)", min_value=1000, max_value=50000, step=500, value=5000)
+            modelo = st.text_input("Modelo do Caminhão", placeholder="Ex: Volvo FH, Scania R450...")
+            combustivel = st.selectbox("Tipo de Combustível", ["Diesel", "GNV", "Elétrico", "Biodiesel"])
+            
+            if st.form_submit_button("Salvar Veículo", use_container_width=True):
+                if not modelo.strip():
+                    st.error("Por favor, preencha o modelo do caminhão.")
+                else:
+                    st.session_state.driver_truck_info = {"capacidade": capacidade, "modelo": modelo, "combustivel": combustivel}
+                    st.session_state.driver_step = "marketplace"
+                    st.rerun()
+        st.stop()
+
     elif step == "marketplace":
         st.markdown('<div class="driver-title">Marketplace de Cargas</div>', unsafe_allow_html=True)
         try:
@@ -858,7 +875,9 @@ else:
             requests.delete(f"{u}/rest/v1/marketplace_ngos?lat=gte.-90", headers=h)
             
             if not res.empty: 
-                r_renamed = res.rename(columns={"Fornecedor":"fornecedor", "ONG":"ong", "Qtde_kg":"qtde_kg", "Distancia_km":"distancia_km"})
+                r_with_names = res.merge(sup[["ID","Nome"]], left_on="Fornecedor", right_on="ID").rename(columns={"Nome":"Fornecedor_Nome"})
+                r_with_names = r_with_names.merge(ong[["ID","Nome"]], left_on="ONG", right_on="ID").rename(columns={"Nome":"ONG_Nome"})
+                r_renamed = r_with_names.rename(columns={"Fornecedor_Nome":"fornecedor", "ONG_Nome":"ong", "Qtde_kg":"qtde_kg", "Distancia_km":"distancia_km"})
                 r_renamed = r_renamed[["fornecedor", "ong", "qtde_kg", "distancia_km"]]
                 r = requests.post(f"{u}/rest/v1/marketplace_results", headers=h, json=r_renamed.to_dict(orient="records"))
                 if r.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (Results): {r.text}")
