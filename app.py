@@ -298,7 +298,75 @@ if st.query_params.get("role") == "driver":
             if st.button("🚀 INICIAR CORRIDA", use_container_width=True):
                 st.session_state["drive_state"] = "transit"; st.rerun()
         elif drive_state == "transit":
-            st.success("🟢 NAVEGAÇÃO ATIVA")
+            import json
+            import streamlit.components.v1 as components
+            
+            # --- GOOGLE MAPS LINK ---
+            gmaps_url = ""
+            if coords:
+                origin_str = f"{coords[0][0]},{coords[0][1]}"
+                dest_str = f"{coords[-1][0]},{coords[-1][1]}"
+                wp_str = "|".join([f"{c[0]},{c[1]}" for c in coords[1:-1]])
+                gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={dest_str}"
+                if wp_str: gmaps_url += f"&waypoints={wp_str}"
+            
+            st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:block; text-align:center; background:#1e293b; color:#fff; text-decoration:none; padding:12px; border-radius:8px; margin-bottom:16px; font-weight:bold;">🗺️ Abrir Rota no Google Maps</a>', unsafe_allow_html=True)
+            
+            # --- SIMULATED GPS (WOW FACTOR) ---
+            html_code = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+                <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                <style>
+                    body {{ margin:0; padding:0; background:#050810; }}
+                    #map {{ width: 100%; height: 350px; border-radius: 8px; }}
+                    .leaflet-container {{ background: #050810 !important; }}
+                </style>
+            </head>
+            <body>
+                <div id="map"></div>
+                <script>
+                    var route = {json.dumps(route_geom)};
+                    if(route.length === 0) route = [[-23.5505, -46.6333]];
+                    var map = L.map('map', {{ zoomControl: false, dragging: false, scrollWheelZoom: false }}).setView(route[0], 16);
+                    L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
+                        attribution: ''
+                    }}).addTo(map);
+                    
+                    var path = L.polyline(route, {{color: '{cor}', weight: 6, opacity: 0.8}}).addTo(map);
+                    
+                    var truckIcon = L.divIcon({{
+                        html: '<div style="background:{cor};width:24px;height:24px;border-radius:50%;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 0 10px {cor};">🚚</div>',
+                        className: '',
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12]
+                    }});
+                    
+                    var marker = L.marker(route[0], {{icon: truckIcon}}).addTo(map);
+                    
+                    var i = 0;
+                    function moveMarker() {{
+                        if(i < route.length) {{
+                            marker.setLatLng(route[i]);
+                            map.panTo(route[i], {{animate: true, duration: 0.1}});
+                            i++;
+                            setTimeout(moveMarker, 150);
+                        }} else {{
+                            i = 0;
+                            marker.setLatLng(route[0]);
+                            map.panTo(route[0]);
+                            setTimeout(moveMarker, 2000);
+                        }}
+                    }}
+                    setTimeout(moveMarker, 1000);
+                </script>
+            </body>
+            </html>
+            """
+            components.html(html_code, height=360)
+            
             if st.button("✅ FINALIZAR LOTE", use_container_width=True):
                 st.session_state["drive_state"] = "completed"; st.rerun()
         elif drive_state == "completed":
