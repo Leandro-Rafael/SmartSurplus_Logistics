@@ -392,12 +392,13 @@ if not st.session_state["logged_in"]:
     # Esconde tudo do Streamlit e zera padding
     st.markdown("""
     <style>
+    html, body, [data-testid="stAppViewContainer"] { overflow: hidden !important; background: #000 !important; }
     .stApp { background: #000 !important; overflow: hidden !important; }
-    .stAppHeader, [data-testid="collapsedControl"], [data-testid="stSidebar"] { display: none !important; }
-    footer { visibility: hidden !important; }
-    .block-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
-    [data-testid="stVerticalBlock"] > div { padding: 0 !important; gap: 0 !important; }
-    iframe { height: 100vh !important; border: none !important; }
+    .stAppHeader, [data-testid="collapsedControl"], [data-testid="stSidebar"], footer { display: none !important; }
+    .block-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
+    [data-testid="stVerticalBlock"] { padding: 0 !important; gap: 0 !important; }
+    [data-testid="stVerticalBlock"] > div { padding: 0 !important; gap: 0 !important; margin: 0 !important; }
+    iframe { height: 100vh !important; width: 100vw !important; border: none !important; display: block !important; }
     </style>
     """, unsafe_allow_html=True)
 
