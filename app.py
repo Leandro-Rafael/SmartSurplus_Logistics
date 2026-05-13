@@ -81,7 +81,7 @@ if st.query_params.get("role") == "driver":
     st.markdown("""<style>
     .stApp{background:#030712!important;}
     section[data-testid="stSidebar"],header,footer{display:none!important;}
-    .block-container{padding:1rem!important; max-width: 100% !important;}
+    .block-container{padding:1rem!important; max-width: 480px !important; margin: 0 auto !important;}
     [data-testid="stButton"] button{background:#00ff88!important;color:#000!important;border-radius:12px!important;font-weight:800!important;border:none!important; font-family: 'Space Mono', monospace !important; padding: 14px !important;}
     .driver-title { font-family:'Syne',sans-serif; color:#f9fafb; font-size:1.5rem; font-weight:800; margin-bottom: 24px; text-align:center;}
     [data-testid="stTextInput"] input, [data-testid="stPasswordInput"] input { background:#0f172a !important; color:#fff !important; border:1px solid #1e293b !important;}
