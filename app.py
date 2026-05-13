@@ -140,8 +140,12 @@ if st.query_params.get("role") == "driver":
             r_foto = st.camera_input("Tirar Foto da Face", label_visibility="collapsed")
             st.markdown("</div><br>", unsafe_allow_html=True)
             
+            r_termos = st.checkbox("Li e concordo com os Termos de Uso e autorizo a coleta da minha localização em tempo real para otimização de rotas.")
+            
             if st.button("✅ Validar e Cadastrar", use_container_width=True, key="btn_cad"):
-                if r_nome and r_cpf and r_pix and r_senha and r_foto:
+                if not r_termos:
+                    st.warning("Você precisa aceitar os Termos de Uso para continuar.")
+                elif r_nome and r_cpf and r_pix and r_senha and r_foto:
                     url = f"{get_sb_url()}/rest/v1/drivers"
                     c_cpf = r_cpf.strip()
                     c_pwd = hashlib.sha256(r_senha.strip().encode()).hexdigest()
@@ -155,6 +159,10 @@ if st.query_params.get("role") == "driver":
         st.stop()
         
     elif step == "vehicle":
+        st.query_params.pop("loc_denied", None)
+        st.query_params.pop("lat", None)
+        st.query_params.pop("lon", None)
+        
         nome = st.session_state.driver_data["nome"].split()[0]
         st.markdown(f'<div class="driver-title">Bem-vindo, {nome}</div>', unsafe_allow_html=True)
         st.markdown("<p style='text-align:center;color:#9ca3af;margin-bottom:24px;'>Qual veículo você está operando hoje?</p>", unsafe_allow_html=True)
@@ -163,26 +171,39 @@ if st.query_params.get("role") == "driver":
         with c1:
             if st.button("🛻 Caminhonete\n(Até 1.000 kg)", use_container_width=True):
                 st.session_state.driver_vehicle = "pickup"
-                st.session_state.driver_step = "marketplace"
+                st.session_state.driver_step = "vehicle_form"
                 st.rerun()
         with c2:
             if st.button("🚛 Caminhão\n(Acima de 1 Ton)", use_container_width=True):
                 st.session_state.driver_vehicle = "truck"
-                st.session_state.driver_step = "truck_form"
+                st.session_state.driver_step = "vehicle_form"
                 st.rerun()
         st.stop()
         
-    elif step == "truck_form":
-        st.markdown('<div class="driver-title">Ficha do Caminhão</div>', unsafe_allow_html=True)
+    elif step == "vehicle_form" or step == "truck_form":
+        veiculo = st.session_state.get("driver_vehicle", "truck")
+        titulo = "Ficha da Caminhonete" if veiculo == "pickup" else "Ficha do Caminhão"
+        min_peso = 100 if veiculo == "pickup" else 1000
+        max_peso = 3000 if veiculo == "pickup" else 50000
+        default_peso = 1000 if veiculo == "pickup" else 5000
+        
+        st.markdown(f'<div class="driver-title">{titulo}</div>', unsafe_allow_html=True)
         st.markdown("<p style='text-align:center;color:#9ca3af;margin-bottom:24px;'>Por favor, insira as especificações do seu veículo para garantir rotas compatíveis.</p>", unsafe_allow_html=True)
-        with st.form("form_truck"):
-            capacidade = st.number_input("Capacidade Suportada (kg)", min_value=1000, max_value=50000, step=500, value=5000)
-            modelo = st.text_input("Modelo do Caminhão", placeholder="Ex: Volvo FH, Scania R450...")
-            combustivel = st.selectbox("Tipo de Combustível", ["Diesel", "GNV", "Elétrico", "Biodiesel"])
+        
+        with st.form("form_vehicle"):
+            capacidade = st.number_input("Capacidade Suportada (kg)", min_value=min_peso, max_value=max_peso, step=100, value=default_peso)
+            modelo = st.text_input(f"Modelo {'da Caminhonete' if veiculo == 'pickup' else 'do Caminhão'}", placeholder="Ex: Hilux, S10..." if veiculo == "pickup" else "Ex: Volvo FH, Scania R450...")
+            combustivel = st.selectbox("Tipo de Combustível", ["Diesel", "Gasolina", "Etanol", "GNV", "Elétrico"] if veiculo == "pickup" else ["Diesel", "GNV", "Elétrico", "Biodiesel"])
             
-            if st.form_submit_button("Salvar Veículo", use_container_width=True):
+            st.markdown("<div style='margin-top:16px;padding:12px;background:#050810;border:1px dashed #1e293b;border-radius:12px;'><p style='color:#38bdf8;font-size:0.8rem;margin-bottom:8px;font-weight:bold;text-align:center;'>📸 Foto do Veículo (Obrigatório)</p>", unsafe_allow_html=True)
+            foto_veiculo = st.camera_input("Tirar Foto do Veículo", label_visibility="collapsed")
+            st.markdown("</div><br>", unsafe_allow_html=True)
+            
+            if st.form_submit_button("Salvar Veículo e Entrar no Marketplace", use_container_width=True):
                 if not modelo.strip():
-                    st.error("Por favor, preencha o modelo do caminhão.")
+                    st.error("Por favor, preencha o modelo do veículo.")
+                elif not foto_veiculo:
+                    st.error("A foto do veículo é obrigatória por segurança.")
                 else:
                     st.session_state.driver_truck_info = {"capacidade": capacidade, "modelo": modelo, "combustivel": combustivel}
                     st.session_state.driver_step = "marketplace"
