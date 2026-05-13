@@ -87,7 +87,7 @@ if st.query_params.get("role") == "driver":
     [data-testid="stTextInput"] input, [data-testid="stPasswordInput"] input { background:#0f172a !important; color:#fff !important; border:1px solid #1e293b !important;}
     .lot-card { border: 2px solid #00ff88; border-radius:12px; padding:16px; margin-bottom:16px; background:#0f172a; }
     .lot-card.yellow { border-color: #fbbf24; }
-    .gps-panel { position: fixed; bottom: 0; left: 0; right: 0; background: #030712; padding: 24px; border-top: 1px solid #1f2937; border-radius: 24px 24px 0 0; z-index: 1000; box-shadow: 0 -10px 40px rgba(0,0,0,0.8); }
+    .gps-panel { background: #030712; padding: 24px; border-top: 1px solid #1f2937; border-radius: 12px; margin-top: 24px; }
     </style>""", unsafe_allow_html=True)
     
     if "driver_logged" not in st.session_state:
@@ -279,7 +279,8 @@ if st.query_params.get("role") == "driver":
                 
         route_geom = get_osrm_route_multi(coords)
         
-        if coords:
+        drive_state = st.session_state.get("drive_state", "pending")
+        if coords and drive_state == "pending":
             m = folium.Map(location=coords[0], zoom_start=13, tiles="CartoDB dark_matter", zoom_control=False)
             m.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution{display:none!important}</style>"))
             plugins.AntPath(route_geom, color=cor, weight=5, pulse_color="#030712", delay=800).add_to(m)
@@ -293,7 +294,6 @@ if st.query_params.get("role") == "driver":
         st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
         st.markdown(f'<div style="display:flex;justify-content:space-between;margin-bottom:12px;"><div style="color:#9ca3af;font-size:.7rem;letter-spacing:2px;text-transform:uppercase;">Navegação // GPS</div><div style="color:{cor};font-size:.9rem;font-weight:bold;font-family:monospace;">Lucro: R$ {lucro:.2f}</div></div>', unsafe_allow_html=True)
         
-        drive_state = st.session_state.get("drive_state", "pending")
         if drive_state == "pending":
             if st.button("🚀 INICIAR CORRIDA", use_container_width=True):
                 st.session_state["drive_state"] = "transit"; st.rerun()
