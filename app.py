@@ -368,6 +368,14 @@ if st.query_params.get("role") == "driver":
             components.html(html_code, height=360)
             
             if st.button("✅ FINALIZAR LOTE", use_container_width=True):
+                lote_id = st.session_state.driver_selected_lote
+                if lote_id:
+                    try:
+                        h = get_sb_headers()
+                        u = get_sb_url()
+                        requests.delete(f"{u}/rest/v1/marketplace_results?fornecedor=eq.{urllib.parse.quote(lote_id)}", headers=h)
+                        requests.delete(f"{u}/rest/v1/marketplace_suppliers?nome=eq.{urllib.parse.quote(lote_id)}", headers=h)
+                    except: pass
                 st.session_state["drive_state"] = "completed"; st.rerun()
         elif drive_state == "completed":
             st.info("📦 Rota finalizada e valor depositado no Pix.")
@@ -948,9 +956,11 @@ else:
         try:
             h = {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}", "Content-Type": "application/json"}
             u = st.secrets["supabase"]["url"]
-            requests.delete(f"{u}/rest/v1/marketplace_results?id=gte.0", headers=h)
-            requests.delete(f"{u}/rest/v1/marketplace_suppliers?lat=gte.-90", headers=h)
-            requests.delete(f"{u}/rest/v1/marketplace_ngos?lat=gte.-90", headers=h)
+            is_demo = st.session_state.get("is_demo", False)
+            if is_demo:
+                requests.delete(f"{u}/rest/v1/marketplace_results?id=gte.0", headers=h)
+                requests.delete(f"{u}/rest/v1/marketplace_suppliers?lat=gte.-90", headers=h)
+                requests.delete(f"{u}/rest/v1/marketplace_ngos?lat=gte.-90", headers=h)
             
             if not res.empty: 
                 r_with_names = res.merge(sup[["ID","Nome"]], left_on="Fornecedor", right_on="ID").rename(columns={"Nome":"Fornecedor_Nome"})
@@ -995,6 +1005,7 @@ else:
                 ong_rows.append({**r.to_dict(), "Inventario":inv, "Categoria":", ".join(inv.keys())})
             st.session_state["manual_suppliers"] = pd.DataFrame(sup_rows)
             st.session_state["manual_ngos"]      = pd.DataFrame(ong_rows)
+            st.session_state["is_demo"] = True
             st.session_state.pop("ran", None)
             st.toast("Demo carregado!", icon="✅"); st.rerun()
 
@@ -1034,6 +1045,7 @@ else:
                                 st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], pd.DataFrame([{"ID":nid,"Nome":p_name or nid,"Lat":lat,"Lon":lon,"Demanda_kg":total,"Categoria":cat_str,"Inventario":inv}])], ignore_index=True)
                             st.session_state["map_click_data"] = None
                             st.session_state["map_click_processed"] = last_clicked
+                            st.session_state["is_demo"] = False
                             st.rerun()
             else:
                 st.info("👆 Clique no mapa para posicionar.")
@@ -1068,6 +1080,7 @@ else:
                                 else:
                                     nid = f"O{len(st.session_state['manual_ngos'])+1}"
                                     st.session_state["manual_ngos"] = pd.concat([st.session_state["manual_ngos"], pd.DataFrame([{"ID":nid,"Nome":p_name or nid,"Lat":lat,"Lon":lon,"Demanda_kg":total,"Categoria":cat_str,"Inventario":inv}])], ignore_index=True)
+                                st.session_state["is_demo"] = False
                                 st.rerun()
                             else: st.error("Endereço não localizado.")
 
@@ -1085,6 +1098,7 @@ else:
         if st.button("🗑 Limpar Malha", use_container_width=True):
             st.session_state["manual_suppliers"] = pd.DataFrame(columns=["ID","Nome","Lat","Lon","Excedente_kg","Categoria","Inventario"])
             st.session_state["manual_ngos"]      = pd.DataFrame(columns=["ID","Nome","Lat","Lon","Demanda_kg","Categoria","Inventario"])
+            st.session_state["is_demo"] = False
             for k in ["results","surplus_df","deficit_df","ran"]: st.session_state.pop(k,None)
             st.rerun()
 
@@ -1127,7 +1141,7 @@ else:
       </div>
     </div>""", unsafe_allow_html=True)
 
-    menu_opcoes = ["🗺 Mapa & Overview","◈ Despachos","⚠ Déficit ONGs","▤ Estoque","◎ Previsão IA","❖ App Motorista"]
+    menu_opcoes = ["🗺 Mapa & Overview","◈ Despachos","⚠ Déficit ONGs","▤ Estoque","◎ Previsão IA","❖ App Motorista","📦 Entregas Pendentes"]
     
     if "aba_selecionada" not in st.session_state:
         st.session_state.aba_selecionada = menu_opcoes[0]
@@ -1336,3 +1350,56 @@ h1{{font-size:2.5rem;font-weight:800;margin-bottom:8px;}}
                 st.markdown(f'<div class="mc"><div class="mc-bar" style="background:#00ff88;"></div><div class="mc-label">Navegação Integrada</div><div style="color:#f9fafb;font-size:.85rem;padding-top:8px;line-height:1.6;">{loc_html}<br><span style="color:#6b7280;font-size:0.75rem;margin-top:6px;display:inline-block;">+ Todos os dados foram sincronizados com o Marketplace. Os motoristas já podem escolher suas corridas.</span></div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="empty"><div class="empty-icon">📱</div><div class="empty-title">Sem lotes</div><div class="empty-sub">Calcule a otimização para abastecer o Marketplace</div></div>', unsafe_allow_html=True)
+
+    elif aba_selecionada == menu_opcoes[6]:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<div class="slabel">// Gestão Operacional</div><div class="stitle">Entregas Pendentes (Nuvem)</div>', unsafe_allow_html=True)
+        
+        try:
+            h = {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}", "Content-Type": "application/json"}
+            u = st.secrets["supabase"]["url"]
+            r = requests.get(f"{u}/rest/v1/marketplace_results", headers=h)
+            
+            if r.status_code == 200 and r.json():
+                import pandas as pd
+                pend_df = pd.DataFrame(r.json())
+                
+                if not pend_df.empty and "fornecedor" in pend_df.columns:
+                    lotes = pend_df.groupby("fornecedor").agg({"ong": lambda x: list(x), "qtde_kg": "sum", "distancia_km": "sum"}).reset_index()
+                    
+                    if not lotes.empty:
+                        for _, row in lotes.iterrows():
+                            st.markdown(f'''
+                            <div class="mc" style="display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div class="mc-label" style="color:#f59e0b;">Aguardando Motorista</div>
+                                    <div class="mc-value" style="font-size:1.4rem;">{row["fornecedor"]}</div>
+                                    <div style="color:#9ca3af;font-size:0.85rem;margin-top:4px;">Carga: {row["qtde_kg"]:.0f} kg | Distância: {row["distancia_km"]:.1f} km</div>
+                                    <div style="color:#64748b;font-size:0.75rem;">Destinos: {", ".join(row["ong"])}</div>
+                                </div>
+                            </div>
+                            ''', unsafe_allow_html=True)
+                            
+                            with st.expander("Gerar QR Code do Lote"):
+                                import qrcode
+                                import io
+                                base_url = "https://leandro-rafael-smartsurplus-logistics-app-foiglc.streamlit.app"
+                                link_gps = f"{base_url}/?role=driver"
+                                
+                                cq1, ci = st.columns([1, 3])
+                                with cq1:
+                                    qr = qrcode.QRCode(version=1, box_size=6, border=2)
+                                    qr.add_data(link_gps); qr.make(fit=True)
+                                    img = qr.make_image(fill_color="#00ff88", back_color="#050810")
+                                    buf = io.BytesIO(); img.save(buf, format="PNG"); buf.seek(0)
+                                    st.image(buf, width=150)
+                                with ci:
+                                    st.markdown(f'<div style="color:#f9fafb;font-family:monospace;font-size:0.85rem;margin-top:20px;">Link Direto:<br><a href="{link_gps}" target="_blank" style="color:#00ff88;text-decoration:none;">{link_gps}</a></div>', unsafe_allow_html=True)
+                    else:
+                        st.success("✅ Nenhuma carga pendente na nuvem.")
+                else:
+                    st.success("✅ Nenhuma carga pendente na nuvem.")
+            else:
+                st.success("✅ Nenhuma carga pendente na nuvem.")
+        except Exception as e:
+            st.error(f"Erro ao buscar pendências: {e}")
