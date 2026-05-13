@@ -258,12 +258,13 @@ if st.query_params.get("role") == "driver":
         if "lat" not in qparams and "loc_denied" not in qparams:
             # --- GPS Injection Flow ---
             import streamlit.components.v1 as components
-            components.html("<style>div[data-testid='stTextInput'] { display: none !important; }</style>", height=0)
-            gps_data = st.text_input("HiddenGPS", key="hidden_gps_input", label_visibility="hidden")
+            components.html("<style>div[data-testid='stForm'] { display: none !important; margin:0; padding:0; }</style>", height=0)
             
-            if gps_data:
-                # Previne loop infinito apagando o valor lido
-                st.session_state.hidden_gps_input = ""
+            with st.form("gps_form", clear_on_submit=True):
+                gps_data = st.text_input("HiddenGPS", label_visibility="hidden")
+                submitted = st.form_submit_button("SubmitGPS")
+                
+            if submitted and gps_data:
                 if gps_data == "denied":
                     st.query_params["loc_denied"] = "true"
                 else:
@@ -288,7 +289,16 @@ if st.query_params.get("role") == "driver":
                             nativeInputValueSetter.call(input, val);
                             const evt = new Event('input', { bubbles: true });
                             input.dispatchEvent(evt);
-                            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+                            
+                            setTimeout(function() {
+                                const btns = window.parent.document.querySelectorAll('button');
+                                for (let b of btns) {
+                                    if (b.innerText.includes("SubmitGPS")) {
+                                        b.click();
+                                        break;
+                                    }
+                                }
+                            }, 50);
                         }
                     }
                     window.onload = function() {
