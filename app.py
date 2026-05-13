@@ -106,12 +106,14 @@ if st.query_params.get("role") == "driver":
             l_senha = st.text_input("Senha", type="password", key="l_senha")
             if st.button("Acessar Plataforma", use_container_width=True, key="btn_login"):
                 if l_cpf and l_senha:
-                    url = f"{get_sb_url()}/rest/v1/drivers?cpf=eq.{l_cpf}&senha=eq.{hashlib.sha256(l_senha.encode()).hexdigest()}"
+                    c_cpf = urllib.parse.quote(l_cpf.strip())
+                    c_pwd = hashlib.sha256(l_senha.strip().encode()).hexdigest()
+                    url = f"{get_sb_url()}/rest/v1/drivers?cpf=eq.{c_cpf}&senha=eq.{c_pwd}"
                     r = requests.get(url, headers=get_sb_headers())
-                    if r.status_code == 200 and len(r.json()) > 0:
+                    if r.status_code == 200 and isinstance(r.json(), list) and len(r.json()) > 0:
                         res = r.json()[0]
                         st.session_state.driver_logged = True
-                        st.session_state.driver_data = {"nome": res["nome"], "cpf": l_cpf}
+                        st.session_state.driver_data = {"nome": res.get("nome", ""), "cpf": res.get("cpf", "")}
                         st.session_state.driver_step = "vehicle"
                         st.rerun()
                     else: st.error("CPF ou Senha incorretos.")
@@ -141,7 +143,9 @@ if st.query_params.get("role") == "driver":
             if st.button("✅ Validar e Cadastrar", use_container_width=True, key="btn_cad"):
                 if r_nome and r_cpf and r_pix and r_senha and r_foto:
                     url = f"{get_sb_url()}/rest/v1/drivers"
-                    payload = {"cpf": r_cpf, "nome": r_nome, "pix": r_pix, "nascimento": str(r_nasc), "senha": hashlib.sha256(r_senha.encode()).hexdigest()}
+                    c_cpf = r_cpf.strip()
+                    c_pwd = hashlib.sha256(r_senha.strip().encode()).hexdigest()
+                    payload = {"cpf": c_cpf, "nome": r_nome.strip(), "pix": r_pix.strip(), "nascimento": str(r_nasc), "senha": c_pwd}
                     r = requests.post(url, headers=get_sb_headers(), json=payload)
                     if r.status_code in [200, 201, 204]:
                         st.success("Cadastro aprovado! Faça o login na outra aba.")
