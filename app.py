@@ -113,7 +113,7 @@ if st.query_params.get("role") == "driver":
                     if r.status_code == 200 and isinstance(r.json(), list) and len(r.json()) > 0:
                         res = r.json()[0]
                         st.session_state.driver_logged = True
-                        st.session_state.driver_data = {"nome": res.get("nome", ""), "cpf": res.get("cpf", "")}
+                        st.session_state.driver_data = {"nome": res.get("nome", ""), "cpf": res.get("cpf", ""), "veiculos": res.get("veiculos", [])}
                         st.session_state.driver_step = "vehicle"
                         st.rerun()
                     else: st.error("CPF ou Senha incorretos.")
@@ -164,17 +164,37 @@ if st.query_params.get("role") == "driver":
         st.query_params.pop("lon", None)
         
         nome = st.session_state.driver_data["nome"].split()[0]
-        st.markdown(f'<div class="driver-title">Bem-vindo, {nome}</div>', unsafe_allow_html=True)
-        st.markdown("<p style='text-align:center;color:#9ca3af;margin-bottom:24px;'>Qual veículo você está operando hoje?</p>", unsafe_allow_html=True)
+        veiculos = st.session_state.driver_data.get("veiculos") or []
+        
+        st.markdown(f'<div class="driver-title">Minha Garagem</div>', unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align:center;color:#9ca3af;margin-bottom:24px;'>Bem-vindo, {nome}! Qual veículo você vai usar hoje?</p>", unsafe_allow_html=True)
+        
+        if veiculos:
+            for idx, v in enumerate(veiculos):
+                v_type = "🛻 Caminhonete" if v.get("tipo") == "pickup" else "🚛 Caminhão"
+                st.markdown(f"""
+                <div style='background:#0f172a; border:2px solid #38bdf8; border-radius:12px; padding:16px; margin-bottom:12px;'>
+                    <div style='color:#38bdf8; font-weight:bold; font-size:1.1rem; margin-bottom:8px;'>{v_type}</div>
+                    <div style='color:#fff; font-size:1rem; margin-bottom:4px;'>Modelo: {v.get("modelo")}</div>
+                    <div style='color:#9ca3af; font-size:0.85rem;'>Capacidade: {v.get("capacidade")} kg | Combustível: {v.get("combustivel")}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"👉 Selecionar {v.get('modelo')}", key=f"sel_v_{idx}", use_container_width=True):
+                    st.session_state.driver_vehicle = v.get("tipo")
+                    st.session_state.driver_truck_info = v
+                    st.session_state.driver_step = "marketplace"
+                    st.rerun()
+            st.markdown("<hr style='border-color:#1e293b; margin:24px 0;'>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center;color:#9ca3af;margin-bottom:16px;'>Ou cadastre um novo veículo:</p>", unsafe_allow_html=True)
         
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("🛻 Caminhonete\n(Até 1.000 kg)", use_container_width=True):
+            if st.button("➕ Nova Caminhonete\n(Até 1.000 kg)", use_container_width=True):
                 st.session_state.driver_vehicle = "pickup"
                 st.session_state.driver_step = "vehicle_form"
                 st.rerun()
         with c2:
-            if st.button("🚛 Caminhão\n(Acima de 1 Ton)", use_container_width=True):
+            if st.button("➕ Novo Caminhão\n(Acima de 1 Ton)", use_container_width=True):
                 st.session_state.driver_vehicle = "truck"
                 st.session_state.driver_step = "vehicle_form"
                 st.rerun()
@@ -182,7 +202,7 @@ if st.query_params.get("role") == "driver":
         
     elif step == "vehicle_form" or step == "truck_form":
         veiculo = st.session_state.get("driver_vehicle", "truck")
-        titulo = "Ficha da Caminhonete" if veiculo == "pickup" else "Ficha do Caminhão"
+        titulo = "Nova Caminhonete" if veiculo == "pickup" else "Novo Caminhão"
         min_peso = 100 if veiculo == "pickup" else 1000
         max_peso = 3000 if veiculo == "pickup" else 50000
         default_peso = 1000 if veiculo == "pickup" else 5000
@@ -205,9 +225,30 @@ if st.query_params.get("role") == "driver":
                 elif not foto_veiculo:
                     st.error("A foto do veículo é obrigatória por segurança.")
                 else:
-                    st.session_state.driver_truck_info = {"capacidade": capacidade, "modelo": modelo, "combustivel": combustivel}
-                    st.session_state.driver_step = "marketplace"
-                    st.rerun()
+                    import base64
+                    foto_b64 = base64.b64encode(foto_veiculo.getvalue()).decode("utf-8")
+                    novo_veiculo = {
+                        "tipo": veiculo,
+                        "capacidade": capacidade,
+                        "modelo": modelo,
+                        "combustivel": combustivel,
+                        "foto": f"data:image/jpeg;base64,{foto_b64}"
+                    }
+                    
+                    veiculos_atuais = st.session_state.driver_data.get("veiculos") or []
+                    veiculos_atuais.append(novo_veiculo)
+                    
+                    cpf = st.session_state.driver_data["cpf"]
+                    url = f"{get_sb_url()}/rest/v1/drivers?cpf=eq.{cpf}"
+                    r = requests.patch(url, headers=get_sb_headers(), json={"veiculos": veiculos_atuais})
+                    
+                    if r.status_code in [200, 204]:
+                        st.session_state.driver_data["veiculos"] = veiculos_atuais
+                        st.session_state.driver_truck_info = novo_veiculo
+                        st.session_state.driver_step = "marketplace"
+                        st.rerun()
+                    else:
+                        st.error("Erro ao salvar veículo na nuvem.")
         st.stop()
 
     elif step == "marketplace":
