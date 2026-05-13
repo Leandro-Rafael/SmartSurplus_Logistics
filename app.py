@@ -194,25 +194,22 @@ if st.query_params.get("role") == "driver":
         
         qparams = st.query_params
         if "lat" not in qparams and "loc_denied" not in qparams:
-            import streamlit.components.v1 as components
-            js = """
-            <script>
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    const url = new URL(window.parent.location.href);
-                    url.searchParams.set("lat", position.coords.latitude);
-                    url.searchParams.set("lon", position.coords.longitude);
-                    window.parent.location.href = url.href;
-                },
-                function(error) {
-                    const url = new URL(window.parent.location.href);
-                    url.searchParams.set("loc_denied", "true");
-                    window.parent.location.href = url.href;
-                }
-            );
-            </script>
-            """
-            components.html(js, height=0)
+            st.markdown("<div style='background:#0f172a;padding:24px;border-radius:12px;text-align:center;border:1px dashed #38bdf8;'>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#38bdf8;margin-bottom:16px;font-family:Syne;'>📍 Compartilhe sua Localização</h3>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#9ca3af;font-size:0.95rem;margin-bottom:24px;'>Para demonstrar o roteamento inteligente, o sistema precisa da sua localização de partida. Selecione uma opção abaixo:</p>", unsafe_allow_html=True)
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("📍 Simular GPS no Centro (SP)", use_container_width=True):
+                    st.query_params["lat"] = "-23.5505"
+                    st.query_params["lon"] = "-46.6333"
+                    st.rerun()
+            with c2:
+                if st.button("Continuar sem GPS", use_container_width=True):
+                    st.query_params["loc_denied"] = "true"
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+            st.stop()
         if "loc_denied" in qparams:
             st.warning("⚠️ **GPS desativado:** As rotas estão sendo listadas sem ordenação de distância da sua localização.")
             
