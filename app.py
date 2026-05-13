@@ -254,25 +254,27 @@ if st.query_params.get("role") == "driver":
     elif step == "marketplace":
         st.markdown('<div class="driver-title">Marketplace de Cargas</div>', unsafe_allow_html=True)
         
-        # --- GPS Injection Flow ---
-        st.markdown("<div style='display:none'>", unsafe_allow_html=True)
-        gps_data = st.text_input("HiddenGPS", key="hidden_gps_input", label_visibility="hidden")
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        if gps_data:
-            if gps_data == "denied":
-                st.query_params["loc_denied"] = "true"
-            else:
-                try:
-                    lat, lon = gps_data.split(",")
-                    st.query_params["lat"] = lat.strip()
-                    st.query_params["lon"] = lon.strip()
-                except:
-                    st.query_params["loc_denied"] = "true"
-            st.rerun()
-
         qparams = st.query_params
         if "lat" not in qparams and "loc_denied" not in qparams:
+            # --- GPS Injection Flow ---
+            import streamlit.components.v1 as components
+            components.html("<style>div[data-testid='stTextInput'] { display: none !important; }</style>", height=0)
+            gps_data = st.text_input("HiddenGPS", key="hidden_gps_input", label_visibility="hidden")
+            
+            if gps_data:
+                # Previne loop infinito apagando o valor lido
+                st.session_state.hidden_gps_input = ""
+                if gps_data == "denied":
+                    st.query_params["loc_denied"] = "true"
+                else:
+                    try:
+                        lat, lon = gps_data.split(",")
+                        st.query_params["lat"] = lat.strip()
+                        st.query_params["lon"] = lon.strip()
+                    except:
+                        st.query_params["loc_denied"] = "true"
+                st.rerun()
+
             with st.spinner("📍 Aguardando permissão de localização no seu navegador..."):
                 js_code = """
                 <!DOCTYPE html>
