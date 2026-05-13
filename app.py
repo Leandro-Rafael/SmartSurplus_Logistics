@@ -171,7 +171,7 @@ if st.query_params.get("role") == "driver":
         
         if veiculos:
             for idx, v in enumerate(veiculos):
-                v_type = "🛻 Caminhonete" if v.get("tipo") == "pickup" else "🚛 Caminhão"
+                v_type = "❖ Caminhonete" if v.get("tipo") == "pickup" else "◈ Caminhão"
                 st.markdown(f"""
                 <div style='background:#0f172a; border:2px solid #38bdf8; border-radius:12px; padding:16px; margin-bottom:12px;'>
                     <div style='color:#38bdf8; font-weight:bold; font-size:1.1rem; margin-bottom:8px;'>{v_type}</div>
@@ -179,7 +179,7 @@ if st.query_params.get("role") == "driver":
                     <div style='color:#9ca3af; font-size:0.85rem;'>Capacidade: {v.get("capacidade")} kg | Combustível: {v.get("combustivel")}</div>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button(f"👉 Selecionar {v.get('modelo')}", key=f"sel_v_{idx}", use_container_width=True):
+                if st.button(f"» Selecionar {v.get('modelo')}", key=f"sel_v_{idx}", use_container_width=True):
                     st.session_state.driver_vehicle = v.get("tipo")
                     st.session_state.driver_truck_info = v
                     st.session_state.driver_step = "marketplace"
@@ -189,12 +189,12 @@ if st.query_params.get("role") == "driver":
         
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("➕ Nova Caminhonete\n(Até 1.000 kg)", use_container_width=True):
+            if st.button("＋ Nova Caminhonete\n(Até 1.000 kg)", use_container_width=True):
                 st.session_state.driver_vehicle = "pickup"
                 st.session_state.driver_step = "vehicle_form"
                 st.rerun()
         with c2:
-            if st.button("➕ Novo Caminhão\n(Acima de 1 Ton)", use_container_width=True):
+            if st.button("＋ Novo Caminhão\n(Acima de 1 Ton)", use_container_width=True):
                 st.session_state.driver_vehicle = "truck"
                 st.session_state.driver_step = "vehicle_form"
                 st.rerun()
@@ -555,7 +555,7 @@ if st.query_params.get("role") == "driver":
             
         elif drive_state == "completed":
             st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
-            st.info("📦 Rota finalizada e valor depositado no Pix.")
+            st.info("✓ Rota finalizada e valor depositado no Pix.")
             if st.button("Voltar ao Marketplace", use_container_width=True):
                 st.session_state.driver_step = "marketplace"
                 st.session_state.drive_state = "pending"
@@ -1319,7 +1319,7 @@ else:
       </div>
     </div>""", unsafe_allow_html=True)
 
-    menu_opcoes = ["🗺 Mapa & Overview","◈ Despachos","⚠ Déficit ONGs","▤ Estoque","◎ Previsão IA","❖ App Motorista","📦 Entregas Pendentes"]
+    menu_opcoes = ["◱ Mapa & Overview","◈ Despachos","⚠ Déficit ONGs","▤ Estoque","◎ Previsão IA","❖ App Motorista","▤ Entregas Pendentes"]
     
     if "aba_selecionada" not in st.session_state:
         st.session_state.aba_selecionada = menu_opcoes[0]
