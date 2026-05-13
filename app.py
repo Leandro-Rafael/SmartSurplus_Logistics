@@ -192,6 +192,23 @@ if st.query_params.get("role") == "driver":
     elif step == "marketplace":
         st.markdown('<div class="driver-title">Marketplace de Cargas</div>', unsafe_allow_html=True)
         
+        # --- GPS Injection Flow ---
+        st.markdown("<div style='display:none'>", unsafe_allow_html=True)
+        gps_data = st.text_input("HiddenGPS", key="hidden_gps_input", label_visibility="hidden")
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        if gps_data:
+            if gps_data == "denied":
+                st.query_params["loc_denied"] = "true"
+            else:
+                try:
+                    lat, lon = gps_data.split(",")
+                    st.query_params["lat"] = lat.strip()
+                    st.query_params["lon"] = lon.strip()
+                except:
+                    st.query_params["loc_denied"] = "true"
+            st.rerun()
+
         qparams = st.query_params
         if "lat" not in qparams and "loc_denied" not in qparams:
             st.markdown("<div style='background:#0f172a;padding:24px;border-radius:12px;text-align:center;border:1px dashed #38bdf8;'>", unsafe_allow_html=True)
@@ -208,19 +225,24 @@ if st.query_params.get("role") == "driver":
                         📍 SOLICITAR GPS
                     </button>
                     <script>
+                    function sendToStreamlit(val) {
+                        const input = window.parent.document.querySelector('input[aria-label="HiddenGPS"]');
+                        if (input) {
+                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                            nativeInputValueSetter.call(input, val);
+                            const evt = new Event('input', { bubbles: true });
+                            input.dispatchEvent(evt);
+                            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+                        }
+                    }
                     function getLoc() {
                         const nav = window.parent.navigator || navigator;
                         nav.geolocation.getCurrentPosition(
                             function(position) {
-                                const url = new URL(window.parent.location.href);
-                                url.searchParams.set("lat", position.coords.latitude);
-                                url.searchParams.set("lon", position.coords.longitude);
-                                window.parent.location.href = url.href;
+                                sendToStreamlit(position.coords.latitude + "," + position.coords.longitude);
                             },
                             function(error) {
-                                const url = new URL(window.parent.location.href);
-                                url.searchParams.set("loc_denied", "true");
-                                window.parent.location.href = url.href;
+                                sendToStreamlit("denied");
                             },
                             { enableHighAccuracy: true, timeout: 10000 }
                         );
