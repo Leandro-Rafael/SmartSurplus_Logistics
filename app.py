@@ -291,28 +291,18 @@ if st.query_params.get("role") == "driver":
                 folium.Marker(c, icon=folium.DivIcon(html=f'<div style="background:{m_cor};width:24px;height:24px;border-radius:50%;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#000;">{icone}</div>',icon_size=(24,24),icon_anchor=(12,12))).add_to(m)
             st_folium(m, width="100%", height=650, returned_objects=[])
         
-        st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
-        st.markdown(f'<div style="display:flex;justify-content:space-between;margin-bottom:12px;"><div style="color:#9ca3af;font-size:.7rem;letter-spacing:2px;text-transform:uppercase;">Navegação // GPS</div><div style="color:{cor};font-size:.9rem;font-weight:bold;font-family:monospace;">Lucro: R$ {lucro:.2f}</div></div>', unsafe_allow_html=True)
-        
         if drive_state == "pending":
+            st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
+            st.markdown(f'<div style="display:flex;justify-content:space-between;margin-bottom:12px;"><div style="color:#9ca3af;font-size:.7rem;letter-spacing:2px;text-transform:uppercase;">Navegação // GPS</div><div style="color:{cor};font-size:.9rem;font-weight:bold;font-family:monospace;">Lucro: R$ {lucro:.2f}</div></div>', unsafe_allow_html=True)
             if st.button("🚀 INICIAR CORRIDA", use_container_width=True):
                 st.session_state["drive_state"] = "transit"; st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+            
         elif drive_state == "transit":
             import json
             import streamlit.components.v1 as components
             
-            # --- GOOGLE MAPS LINK ---
-            gmaps_url = ""
-            if coords:
-                origin_str = f"{coords[0][0]},{coords[0][1]}"
-                dest_str = f"{coords[-1][0]},{coords[-1][1]}"
-                wp_str = "|".join([f"{c[0]},{c[1]}" for c in coords[1:-1]])
-                gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={dest_str}"
-                if wp_str: gmaps_url += f"&waypoints={wp_str}"
-            
-            st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:block; text-align:center; background:#1e293b; color:#fff; text-decoration:none; padding:12px; border-radius:8px; margin-bottom:16px; font-weight:bold;">🗺️ Abrir Rota no Google Maps</a>', unsafe_allow_html=True)
-            
-            # --- SIMULATED GPS (WOW FACTOR) ---
+            # --- SIMULATED GPS (WOW FACTOR) MAXIMIZED ---
             html_code = f"""
             <!DOCTYPE html>
             <html>
@@ -320,28 +310,27 @@ if st.query_params.get("role") == "driver":
                 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
                 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
                 <style>
-                    body {{ margin:0; padding:0; background:#050810; }}
-                    #map {{ width: 100%; height: 350px; border-radius: 8px; }}
+                    body {{ margin:0; padding:0; background:#050810; font-family: monospace; }}
+                    #map {{ width: 100%; height: 600px; border-radius: 12px; }}
                     .leaflet-container {{ background: #050810 !important; }}
+                    .profit-badge {{ position: absolute; top: 20px; right: 20px; z-index: 1000; background: #030712; padding: 12px 16px; border: 2px solid {cor}; border-radius: 8px; color: {cor}; font-weight: bold; font-size: 1.1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }}
                 </style>
             </head>
             <body>
-                <div id="map"></div>
+                <div style="position: relative;">
+                    <div id="map"></div>
+                    <div class="profit-badge">Lucro: R$ {lucro:.2f}</div>
+                </div>
                 <script>
                     var route = {json.dumps(route_geom)};
                     if(route.length === 0) route = [[-23.5505, -46.6333]];
                     var map = L.map('map', {{ zoomControl: false, dragging: false, scrollWheelZoom: false }}).setView(route[0], 16);
-                    L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
-                        attribution: ''
-                    }}).addTo(map);
-                    
+                    L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{ attribution: '' }}).addTo(map);
                     var path = L.polyline(route, {{color: '{cor}', weight: 6, opacity: 0.8}}).addTo(map);
                     
                     var truckIcon = L.divIcon({{
                         html: '<div style="background:{cor};width:24px;height:24px;border-radius:50%;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 0 10px {cor};">🚚</div>',
-                        className: '',
-                        iconSize: [24, 24],
-                        iconAnchor: [12, 12]
+                        className: '', iconSize: [24, 24], iconAnchor: [12, 12]
                     }});
                     
                     var marker = L.marker(route[0], {{icon: truckIcon}}).addTo(map);
@@ -365,7 +354,19 @@ if st.query_params.get("role") == "driver":
             </body>
             </html>
             """
-            components.html(html_code, height=360)
+            components.html(html_code, height=610)
+            
+            st.markdown('<div class="gps-panel" style="margin-top: 12px; padding: 16px;">', unsafe_allow_html=True)
+            # --- GOOGLE MAPS LINK ---
+            gmaps_url = ""
+            if coords:
+                origin_str = f"{coords[0][0]},{coords[0][1]}"
+                dest_str = f"{coords[-1][0]},{coords[-1][1]}"
+                wp_str = "|".join([f"{c[0]},{c[1]}" for c in coords[1:-1]])
+                gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={dest_str}"
+                if wp_str: gmaps_url += f"&waypoints={wp_str}"
+            
+            st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:block; text-align:center; background:#1e293b; color:#fff; text-decoration:none; padding:16px; border-radius:8px; margin-bottom:12px; font-weight:bold; font-size:1.05rem;">🗺️ Abrir Rota no Google Maps</a>', unsafe_allow_html=True)
             
             if st.button("✅ FINALIZAR LOTE", use_container_width=True):
                 lote_id = st.session_state.driver_selected_lote
@@ -377,13 +378,17 @@ if st.query_params.get("role") == "driver":
                         requests.delete(f"{u}/rest/v1/marketplace_suppliers?nome=eq.{urllib.parse.quote(lote_id)}", headers=h)
                     except: pass
                 st.session_state["drive_state"] = "completed"; st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+            
         elif drive_state == "completed":
+            st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
             st.info("📦 Rota finalizada e valor depositado no Pix.")
             if st.button("Voltar ao Marketplace", use_container_width=True):
                 st.session_state.driver_step = "marketplace"
                 st.session_state.drive_state = "pending"
                 st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
         st.stop()
 
 if "logged_in" not in st.session_state:
