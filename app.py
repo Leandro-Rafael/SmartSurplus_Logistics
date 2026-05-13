@@ -187,8 +187,55 @@ if st.query_params.get("role") == "driver":
 
     elif step == "marketplace":
         st.markdown('<div class="driver-title">Marketplace de Cargas</div>', unsafe_allow_html=True)
+        
+        qparams = st.query_params
+        if "lat" not in qparams and "loc_denied" not in qparams:
+            st.markdown("<div style='background:#0f172a;padding:24px;border-radius:12px;text-align:center;border:1px dashed #38bdf8;'>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#38bdf8;margin-bottom:16px;font-family:Syne;'>📍 Precisamos da sua localização</h3>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#9ca3af;font-size:0.95rem;margin-bottom:24px;'>Para sugerirmos os fretes mais próximos e traçarmos as rotas até o local de coleta, ative o seu GPS. Sem essa permissão, o sistema não conseguirá otimizar a sua experiência e as rotas partirão da central.</p>", unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("📍 Ativar GPS", use_container_width=True):
+                    js = """
+                    <script>
+                    navigator.geolocation.getCurrentPosition(
+                        function(position) {
+                            const url = new URL(window.parent.location.href);
+                            url.searchParams.set("lat", position.coords.latitude);
+                            url.searchParams.set("lon", position.coords.longitude);
+                            window.parent.location.href = url.href;
+                        },
+                        function(error) {
+                            const url = new URL(window.parent.location.href);
+                            url.searchParams.set("loc_denied", "true");
+                            window.parent.location.href = url.href;
+                        }
+                    );
+                    </script>
+                    """
+                    import streamlit.components.v1 as components
+                    components.html(js, height=0)
+            with c2:
+                if st.button("Continuar sem GPS", use_container_width=True):
+                    st.query_params["loc_denied"] = "true"
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+            st.stop()
+            
+        if "loc_denied" in qparams:
+            st.warning("⚠️ **GPS desativado:** As rotas estão sendo listadas sem ordenação de distância da sua localização.")
+            
         try:
             import pandas as pd
+            import math
+            
+            def haversine(lat1, lon1, lat2, lon2):
+                R = 6371
+                dlat = math.radians(lat2-lat1)
+                dlon = math.radians(lon2-lon1)
+                a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1))*math.cos(math.radians(lat2))*math.sin(dlon/2)**2
+                return R * 2 * math.asin(math.sqrt(a))
+                
             url = f"{get_sb_url()}/rest/v1/marketplace_results"
             r = requests.get(url, headers=get_sb_headers())
             if r.status_code == 200 and r.json():
@@ -207,6 +254,23 @@ if st.query_params.get("role") == "driver":
             if lotes.empty: 
                 st.info("Nenhuma carga disponível no momento.")
                 st.stop()
+                
+            driver_lat, driver_lon = None, None
+            if "lat" in qparams and "lon" in qparams:
+                driver_lat = float(qparams["lat"])
+                driver_lon = float(qparams["lon"])
+                url_sup = f"{get_sb_url()}/rest/v1/marketplace_suppliers"
+                r_sup = requests.get(url_sup, headers=get_sb_headers())
+                if r_sup.status_code == 200 and r_sup.json():
+                    sup_df = pd.DataFrame(r_sup.json()).set_index("nome")
+                    dists = []
+                    for f in lotes["Fornecedor"]:
+                        if f in sup_df.index:
+                            slat, slon = float(sup_df.loc[f, "lat"]), float(sup_df.loc[f, "lon"])
+                            dists.append(haversine(driver_lat, driver_lon, slat, slon))
+                        else: dists.append(9999)
+                    lotes["DistToDriver"] = dists
+                    lotes = lotes.sort_values("DistToDriver").reset_index(drop=True)
             
             veiculo = st.session_state.driver_vehicle
             for i, row in lotes.iterrows():
@@ -219,9 +283,14 @@ if st.query_params.get("role") == "driver":
                 c_border = "#00ff88" if is_adv else "#fbbf24"
                 c_status = "🟢 Rota Otimizada p/ Seu Veículo" if is_adv else "🟡 Carga Desbalanceada p/ Seu Veículo"
                 
+                dist_html = ""
+                if "DistToDriver" in lotes.columns and row["DistToDriver"] != 9999:
+                    dist_html = f"<div style='color:#38bdf8;font-size:0.8rem;font-weight:bold;margin-bottom:8px;'>📍 A {row['DistToDriver']:.1f} km do seu local</div>"
+                
                 st.markdown(f"""
                 <div style="border: 2px solid {c_border}; border-radius:12px; padding:16px; margin-bottom:8px; background:#0f172a;">
-                    <div style="color:{c_border}; font-size:0.7rem; font-weight:bold; margin-bottom:8px;">{c_status}</div>
+                    <div style="color:{c_border}; font-size:0.7rem; font-weight:bold; margin-bottom:4px;">{c_status}</div>
+                    {dist_html}
                     <div style="font-size:1.1rem; color:#fff; font-weight:bold;">Coleta: {row['Fornecedor']}</div>
                     <div style="color:#9ca3af; font-size:0.85rem; margin-top:4px;">Entregas: {len(row['ONG'])} paradas</div>
                     <div style="display:flex; justify-content:space-between; margin-top:12px; border-top:1px solid #1e293b; padding-top:12px;">
@@ -241,6 +310,9 @@ if st.query_params.get("role") == "driver":
                     st.session_state.driver_lucro = lucro
                     st.session_state.driver_color = c_border
                     st.session_state.driver_step = "gps"
+                    if driver_lat and driver_lon:
+                        st.session_state.driver_lat = driver_lat
+                        st.session_state.driver_lon = driver_lon
                     st.rerun()
                 st.markdown("<br>", unsafe_allow_html=True)
         except Exception as e:
@@ -267,6 +339,9 @@ if st.query_params.get("role") == "driver":
         ong_df = pd.DataFrame(r_ong.json()).set_index("nome") if r_ong.status_code == 200 and r_ong.json() else pd.DataFrame()
         
         coords = []
+        if "driver_lat" in st.session_state and "driver_lon" in st.session_state:
+            coords.append((st.session_state.driver_lat, st.session_state.driver_lon))
+            
         if lote_id in sup_df.index:
             s_lat, s_lon = sup_df.loc[lote_id, "lat"], sup_df.loc[lote_id, "lon"]
             coords.append((float(s_lat), float(s_lon)))
