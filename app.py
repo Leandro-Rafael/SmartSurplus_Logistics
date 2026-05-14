@@ -462,7 +462,7 @@ if st.query_params.get("role") == "driver":
                 icone = "A" if i == 0 else str(i+1)
                 m_cor = cor if i > 0 else "#ffffff"
                 folium.Marker(c, icon=folium.DivIcon(html=f'<div style="background:{m_cor};width:24px;height:24px;border-radius:50%;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#000;">{icone}</div>',icon_size=(24,24),icon_anchor=(12,12))).add_to(m)
-            st_folium(m, width="100%", height=650, returned_objects=[])
+            st_folium(m, width="100%", height=400, returned_objects=[])
         
         if drive_state == "pending":
             st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
@@ -484,7 +484,7 @@ if st.query_params.get("role") == "driver":
                 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
                 <style>
                     body {{ margin:0; padding:0; background:#050810; font-family: monospace; }}
-                    #map {{ width: 100%; height: 600px; border-radius: 12px; }}
+                    #map {{ width: 100%; height: 400px; border-radius: 12px; }}
                     .leaflet-container {{ background: #050810 !important; }}
                     .profit-badge {{ position: absolute; top: 20px; right: 20px; z-index: 1000; background: #030712; padding: 12px 16px; border: 2px solid {cor}; border-radius: 8px; color: {cor}; font-weight: bold; font-size: 1.1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }}
                 </style>
@@ -527,7 +527,7 @@ if st.query_params.get("role") == "driver":
             </body>
             </html>
             """
-            components.html(html_code, height=610)
+            components.html(html_code, height=420)
             
             st.markdown('<div class="gps-panel" style="margin-top: 12px; padding: 16px;">', unsafe_allow_html=True)
             # --- GOOGLE MAPS LINK ---
