@@ -484,7 +484,7 @@ if st.query_params.get("role") == "driver":
                 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
                 <style>
                     body {{ margin:0; padding:0; background:#050810; font-family: monospace; }}
-                    #map {{ width: 100%; height: 520px; border-radius: 12px; }}
+                    #map {{ width: 100%; height: 700px; border-radius: 12px; }}
                     .leaflet-container {{ background: #050810 !important; }}
                     .profit-badge {{ position: absolute; top: 20px; right: 20px; z-index: 1000; background: #030712; padding: 12px 16px; border: 2px solid {cor}; border-radius: 8px; color: {cor}; font-weight: bold; font-size: 1.1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }}
                 </style>
@@ -527,7 +527,7 @@ if st.query_params.get("role") == "driver":
             </body>
             </html>
             """
-            components.html(html_code, height=540)
+            components.html(html_code, height=720)
             
             st.markdown('<div class="gps-panel" style="margin-top: 12px; padding: 16px;">', unsafe_allow_html=True)
             # --- GOOGLE MAPS LINK ---
@@ -539,15 +539,17 @@ if st.query_params.get("role") == "driver":
                 gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={dest_str}"
                 if wp_str: gmaps_url += f"&waypoints={wp_str}"
             
-            st.markdown("""<div id="nav-buttons-row"></div><style>
-            div.element-container:has(#nav-buttons-row) + div[data-testid="stHorizontalBlock"] { flex-direction: row !important; flex-wrap: nowrap !important; gap: 8px !important; }
-            div.element-container:has(#nav-buttons-row) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) { width: 75% !important; flex: 1 1 75% !important; padding: 0 !important; }
-            div.element-container:has(#nav-buttons-row) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) { width: 25% !important; flex: 1 1 25% !important; min-width: 0 !important; padding: 0 !important; }
-            div.element-container:has(#nav-buttons-row) + div[data-testid="stHorizontalBlock"] [data-testid="stButton"] button { border-radius: 8px !important; height: 48px !important; padding: 0 !important; font-size: 1.5rem !important; display: flex; align-items: center; justify-content: center; width: 100% !important; }
+            st.markdown("""<style>
+            @media (max-width: 992px) {
+                [data-testid="stHorizontalBlock"] { flex-direction: row !important; flex-wrap: nowrap !important; align-items: stretch !important; gap: 12px !important; }
+                [data-testid="column"]:nth-child(1) { width: 75% !important; min-width: 75% !important; flex: 0 0 75% !important; padding: 0 !important; }
+                [data-testid="column"]:nth-child(2) { width: calc(25% - 12px) !important; min-width: calc(25% - 12px) !important; flex: 0 0 calc(25% - 12px) !important; padding: 0 !important; }
+            }
+            [data-testid="stButton"] button { border-radius: 12px !important; height: 54px !important; padding: 0 !important; font-size: 1.8rem !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; }
             </style>""", unsafe_allow_html=True)
             c1, c2 = st.columns([3, 1])
             with c1:
-                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; padding:12px; border-radius:8px; font-weight:bold; font-size:0.95rem; height: 48px;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
+                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; border-radius:12px; font-weight:bold; font-size:1.05rem; height: 54px; width: 100%;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
             with c2:
                 if st.button("✓", key="btn_entregue", use_container_width=True):
                     lote_id = st.session_state.driver_selected_lote
