@@ -539,12 +539,11 @@ if st.query_params.get("role") == "driver":
                 gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={dest_str}"
                 if wp_str: gmaps_url += f"&waypoints={wp_str}"
             
-            c1, c2 = st.columns([2, 1])
+            c1, c2 = st.columns([4, 1])
             with c1:
-                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; padding:12px; border-radius:8px; font-weight:bold; font-size:0.95rem; height: 100%;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
+                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; padding:12px; border-radius:12px; font-weight:bold; font-size:0.95rem; height: 100%;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
             with c2:
-                st.markdown("<div style='margin-top: 4px;'>", unsafe_allow_html=True)
-                if st.checkbox("✅ Entregue", key="chk_entregue"):
+                if st.button("✅", key="btn_entregue", use_container_width=True):
                     lote_id = st.session_state.driver_selected_lote
                     if lote_id:
                         try:
@@ -554,7 +553,6 @@ if st.query_params.get("role") == "driver":
                             requests.delete(f"{u}/rest/v1/marketplace_suppliers?nome=eq.{urllib.parse.quote(lote_id)}", headers=h)
                         except: pass
                     st.session_state["drive_state"] = "completed"; st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
         elif drive_state == "completed":
