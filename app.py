@@ -462,7 +462,7 @@ if st.query_params.get("role") == "driver":
                 icone = "A" if i == 0 else str(i+1)
                 m_cor = cor if i > 0 else "#ffffff"
                 folium.Marker(c, icon=folium.DivIcon(html=f'<div style="background:{m_cor};width:24px;height:24px;border-radius:50%;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#000;">{icone}</div>',icon_size=(24,24),icon_anchor=(12,12))).add_to(m)
-            st_folium(m, width="100%", height=400, returned_objects=[])
+            st_folium(m, width="100%", height=520, returned_objects=[])
         
         if drive_state == "pending":
             st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
@@ -484,7 +484,7 @@ if st.query_params.get("role") == "driver":
                 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
                 <style>
                     body {{ margin:0; padding:0; background:#050810; font-family: monospace; }}
-                    #map {{ width: 100%; height: 400px; border-radius: 12px; }}
+                    #map {{ width: 100%; height: 520px; border-radius: 12px; }}
                     .leaflet-container {{ background: #050810 !important; }}
                     .profit-badge {{ position: absolute; top: 20px; right: 20px; z-index: 1000; background: #030712; padding: 12px 16px; border: 2px solid {cor}; border-radius: 8px; color: {cor}; font-weight: bold; font-size: 1.1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }}
                 </style>
@@ -527,7 +527,7 @@ if st.query_params.get("role") == "driver":
             </body>
             </html>
             """
-            components.html(html_code, height=420)
+            components.html(html_code, height=540)
             
             st.markdown('<div class="gps-panel" style="margin-top: 12px; padding: 16px;">', unsafe_allow_html=True)
             # --- GOOGLE MAPS LINK ---
@@ -539,18 +539,22 @@ if st.query_params.get("role") == "driver":
                 gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={dest_str}"
                 if wp_str: gmaps_url += f"&waypoints={wp_str}"
             
-            st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:block; text-align:center; background:#1e293b; color:#fff; text-decoration:none; padding:16px; border-radius:8px; margin-bottom:12px; font-weight:bold; font-size:1.05rem;">🗺️ Abrir Rota no Google Maps</a>', unsafe_allow_html=True)
-            
-            if st.button("✅ FINALIZAR LOTE", use_container_width=True):
-                lote_id = st.session_state.driver_selected_lote
-                if lote_id:
-                    try:
-                        h = get_sb_headers()
-                        u = get_sb_url()
-                        requests.delete(f"{u}/rest/v1/marketplace_results?fornecedor=eq.{urllib.parse.quote(lote_id)}", headers=h)
-                        requests.delete(f"{u}/rest/v1/marketplace_suppliers?nome=eq.{urllib.parse.quote(lote_id)}", headers=h)
-                    except: pass
-                st.session_state["drive_state"] = "completed"; st.rerun()
+            c1, c2 = st.columns([2, 1])
+            with c1:
+                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; padding:12px; border-radius:8px; font-weight:bold; font-size:0.95rem; height: 100%;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
+            with c2:
+                st.markdown("<div style='margin-top: 4px;'>", unsafe_allow_html=True)
+                if st.checkbox("✅ Entregue", key="chk_entregue"):
+                    lote_id = st.session_state.driver_selected_lote
+                    if lote_id:
+                        try:
+                            h = get_sb_headers()
+                            u = get_sb_url()
+                            requests.delete(f"{u}/rest/v1/marketplace_results?fornecedor=eq.{urllib.parse.quote(lote_id)}", headers=h)
+                            requests.delete(f"{u}/rest/v1/marketplace_suppliers?nome=eq.{urllib.parse.quote(lote_id)}", headers=h)
+                        except: pass
+                    st.session_state["drive_state"] = "completed"; st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
         elif drive_state == "completed":
