@@ -539,11 +539,17 @@ if st.query_params.get("role") == "driver":
                 gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={dest_str}"
                 if wp_str: gmaps_url += f"&waypoints={wp_str}"
             
-            c1, c2 = st.columns([4, 1])
+            st.markdown("""<div id="nav-buttons-row"></div><style>
+            div.element-container:has(#nav-buttons-row) + div[data-testid="stHorizontalBlock"] { flex-direction: row !important; flex-wrap: nowrap !important; gap: 8px !important; }
+            div.element-container:has(#nav-buttons-row) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) { width: 75% !important; flex: 1 1 75% !important; padding: 0 !important; }
+            div.element-container:has(#nav-buttons-row) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) { width: 25% !important; flex: 1 1 25% !important; min-width: 0 !important; padding: 0 !important; }
+            div.element-container:has(#nav-buttons-row) + div[data-testid="stHorizontalBlock"] [data-testid="stButton"] button { border-radius: 8px !important; height: 48px !important; padding: 0 !important; font-size: 1.5rem !important; display: flex; align-items: center; justify-content: center; width: 100% !important; }
+            </style>""", unsafe_allow_html=True)
+            c1, c2 = st.columns([3, 1])
             with c1:
-                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; padding:12px; border-radius:12px; font-weight:bold; font-size:0.95rem; height: 100%;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
+                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; padding:12px; border-radius:8px; font-weight:bold; font-size:0.95rem; height: 48px;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
             with c2:
-                if st.button("✅", key="btn_entregue", use_container_width=True):
+                if st.button("✓", key="btn_entregue", use_container_width=True):
                     lote_id = st.session_state.driver_selected_lote
                     if lote_id:
                         try:
