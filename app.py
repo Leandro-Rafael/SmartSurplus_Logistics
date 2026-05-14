@@ -483,8 +483,8 @@ if st.query_params.get("role") == "driver":
                 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
                 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
                 <style>
-                    body {{ margin:0; padding:0; background:#050810; font-family: monospace; }}
-                    #map {{ width: 100%; height: 700px; border-radius: 12px; }}
+                    body {{ margin:0; padding:0; background:#050810; font-family: monospace; overflow: hidden; }}
+                    #map {{ width: 100vw; height: 100vh; border-radius: 0; }}
                     .leaflet-container {{ background: #050810 !important; }}
                     .profit-badge {{ position: absolute; top: 20px; right: 20px; z-index: 1000; background: #030712; padding: 12px 16px; border: 2px solid {cor}; border-radius: 8px; color: {cor}; font-weight: bold; font-size: 1.1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }}
                 </style>
@@ -527,9 +527,8 @@ if st.query_params.get("role") == "driver":
             </body>
             </html>
             """
-            components.html(html_code, height=720)
+            components.html(html_code, height=800)
             
-            st.markdown('<div class="gps-panel" style="margin-top: 12px; padding: 16px;">', unsafe_allow_html=True)
             # --- GOOGLE MAPS LINK ---
             gmaps_url = ""
             if coords:
@@ -540,16 +539,18 @@ if st.query_params.get("role") == "driver":
                 if wp_str: gmaps_url += f"&waypoints={wp_str}"
             
             st.markdown("""<style>
-            @media (max-width: 992px) {
-                [data-testid="stHorizontalBlock"] { flex-direction: row !important; flex-wrap: nowrap !important; align-items: stretch !important; gap: 12px !important; }
-                [data-testid="column"]:nth-child(1) { width: 75% !important; min-width: 75% !important; flex: 0 0 75% !important; padding: 0 !important; }
-                [data-testid="column"]:nth-child(2) { width: calc(25% - 12px) !important; min-width: calc(25% - 12px) !important; flex: 0 0 calc(25% - 12px) !important; padding: 0 !important; }
-            }
-            [data-testid="stButton"] button { border-radius: 12px !important; height: 54px !important; padding: 0 !important; font-size: 1.8rem !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; }
+            .stApp { overflow: hidden !important; }
+            .block-container { padding: 0 !important; margin: 0 !important; max-width: 100vw !important; overflow: hidden !important; }
+            iframe[title="streamlit.components.v1.components.html"] { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 80vh !important; border: none !important; z-index: 10; }
+            
+            [data-testid="stHorizontalBlock"] { position: fixed !important; bottom: 0 !important; left: 0 !important; width: 100vw !important; height: 20vh !important; background: #030712 !important; flex-direction: row !important; flex-wrap: nowrap !important; align-items: center !important; justify-content: center !important; padding: 0 4vw !important; gap: 2vw !important; z-index: 999999 !important; border-top: 2px solid #1e293b; }
+            [data-testid="column"]:nth-child(1) { width: 78% !important; min-width: 78% !important; flex: 0 0 78% !important; padding: 0 !important; }
+            [data-testid="column"]:nth-child(2) { width: 20% !important; min-width: 20% !important; flex: 0 0 20% !important; padding: 0 !important; }
+            [data-testid="stButton"] button { border-radius: 12px !important; height: 10vh !important; padding: 0 !important; font-size: 2rem !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; }
             </style>""", unsafe_allow_html=True)
-            c1, c2 = st.columns([3, 1])
+            c1, c2 = st.columns([4, 1])
             with c1:
-                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; border-radius:12px; font-weight:bold; font-size:1.05rem; height: 54px; width: 100%;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
+                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; border-radius:12px; font-weight:bold; font-size:1.1rem; height: 10vh; width: 100%;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
             with c2:
                 if st.button("✓", key="btn_entregue", use_container_width=True):
                     lote_id = st.session_state.driver_selected_lote
@@ -561,7 +562,6 @@ if st.query_params.get("role") == "driver":
                             requests.delete(f"{u}/rest/v1/marketplace_suppliers?nome=eq.{urllib.parse.quote(lote_id)}", headers=h)
                         except: pass
                     st.session_state["drive_state"] = "completed"; st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
             
         elif drive_state == "completed":
             st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
