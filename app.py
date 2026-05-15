@@ -702,16 +702,24 @@ if st.query_params.get("role") == "admin":
                 st.info("[ NO PENDING REGISTRATIONS FOUND ]")
             
             st.markdown("<hr style='border-color:#003300;'>", unsafe_allow_html=True)
-            st.markdown("### SECURITY BLOCKLIST")
-            st.markdown("BLOCK ACCESS BY E-MAIL OR CPF:")
-            c1, c2 = st.columns([3,1])
+            st.markdown("### SECURITY BLOCKLIST & RECOVERY")
+            st.markdown("BLOCK OR UNBLOCK ACCESS BY E-MAIL OR CPF:")
+            c1, c2, c3 = st.columns([2,1,1])
             with c1: block_target = st.text_input("Target Email/CPF", label_visibility="collapsed")
             with c2: 
                 if st.button("BLOCK TARGET", use_container_width=True):
-                    q = f"email=eq.{block_target.strip()}" if "@" in block_target else f"cpf=eq.{block_target.strip()}"
-                    r_b = requests.patch(f"{u}/rest/v1/drivers?{q}", headers=h, json={"status": "blocked"})
-                    if r_b.status_code in [200, 204]: st.success("[ TARGET BLOCKED ]")
-                    else: st.error("[ TARGET NOT FOUND OR ERROR ]")
+                    if block_target:
+                        q = f"email=eq.{block_target.strip()}" if "@" in block_target else f"cpf=eq.{block_target.strip()}"
+                        r_b = requests.patch(f"{u}/rest/v1/drivers?{q}", headers=h, json={"status": "blocked"})
+                        if r_b.status_code in [200, 204]: st.success("[ TARGET BLOCKED ]")
+                        else: st.error("[ TARGET NOT FOUND OR ERROR ]")
+            with c3:
+                if st.button("UNBLOCK TARGET", use_container_width=True):
+                    if block_target:
+                        q = f"email=eq.{block_target.strip()}" if "@" in block_target else f"cpf=eq.{block_target.strip()}"
+                        r_u = requests.patch(f"{u}/rest/v1/drivers?{q}", headers=h, json={"status": "approved"})
+                        if r_u.status_code in [200, 204]: st.success("[ TARGET UNBLOCKED ]")
+                        else: st.error("[ TARGET NOT FOUND OR ERROR ]")
                     
         with tab2:
             st.markdown("### RAW DATA STREAMS")
@@ -726,12 +734,20 @@ if st.query_params.get("role") == "admin":
             
             st.markdown("<hr style='border-color:#003300;'>", unsafe_allow_html=True)
             st.markdown("### GRANULAR DELETION TOOL")
-            c1, c2, c3 = st.columns([2,2,1])
+            st.markdown("DELETE A SINGLE RECORD OR A RANGE OF RECORDS. LEAVE 'TO ID' AS 0 TO DELETE A SINGLE RECORD.")
+            c1, c2, c3, c4 = st.columns([2,1,1,1.5])
             with c1: g_table = st.selectbox("TARGET TABLE", ["drivers", "marketplace_results", "marketplace_suppliers", "marketplace_ngos"], label_visibility="collapsed")
-            with c2: g_id = st.number_input("RECORD ID", min_value=0, step=1, label_visibility="collapsed")
-            with c3:
-                if st.button("DELETE RECORD", use_container_width=True):
-                    r_del = requests.delete(f"{u}/rest/v1/{g_table}?id=eq.{g_id}", headers=h)
+            with c2: g_id1 = st.number_input("FROM ID", min_value=0, step=1, label_visibility="collapsed")
+            with c3: g_id2 = st.number_input("TO ID", min_value=0, step=1, value=0, label_visibility="collapsed")
+            with c4:
+                if st.button("DELETE RECORD(S)", use_container_width=True):
+                    if g_id2 > g_id1:
+                        # Range Deletion
+                        r_del = requests.delete(f"{u}/rest/v1/{g_table}?id=gte.{g_id1}&id=lte.{g_id2}", headers=h)
+                    else:
+                        # Single Deletion
+                        r_del = requests.delete(f"{u}/rest/v1/{g_table}?id=eq.{g_id1}", headers=h)
+                        
                     if r_del.status_code in [200, 204]: st.success("[ DELETION SUCCESSFUL ]")
                     else: st.error(f"[ FAILED: {r_del.status_code} ]")
             
