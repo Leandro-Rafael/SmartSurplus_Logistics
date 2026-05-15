@@ -131,29 +131,30 @@ if st.query_params.get("role") == "driver":
                     r = requests.get(url, headers=get_sb_headers())
                     if r.status_code == 200 and isinstance(r.json(), list) and len(r.json()) > 0:
                         res = r.json()[0]
-                        st.session_state.driver_logged = True
-                        st.session_state.driver_data = {"nome": res.get("nome", ""), "cpf": res.get("cpf", ""), "veiculos": res.get("veiculos", [])}
-                        st.session_state.driver_step = "vehicle"
-                        st.rerun()
+                        status = res.get("status", "approved") # Contas antigas defaultam para approved
+                        
+                        if status == "pending":
+                            st.warning("⚠️ Cadastro sendo analisado. Para que você consiga realizar o seu login com êxito, aguarde a aprovação da administração.")
+                        elif status == "blocked":
+                            st.error("❌ Acesso bloqueado. Entre em contato com o suporte.")
+                        else:
+                            st.session_state.driver_logged = True
+                            st.session_state.driver_data = {"id": res.get("id"), "nome": res.get("nome", ""), "cpf": res.get("cpf", ""), "veiculos": res.get("veiculos", [])}
+                            st.session_state.driver_step = "vehicle"
+                            st.rerun()
                     else: st.error("CPF ou Senha incorretos.")
                 else: st.warning("Preencha todos os campos.")
                 
         with tab2:
-            st.markdown("<div style='color:#9ca3af;font-size:0.85rem;margin-bottom:16px;text-align:center;'>Preencha os dados abaixo para se tornar um motorista parceiro. <br><b style='color:#00ff88;'>Obrigatório ter no mínimo 18 anos.</b></div>", unsafe_allow_html=True)
+            st.markdown("<div style='color:#9ca3af;font-size:0.85rem;margin-bottom:16px;text-align:center;'>Preencha os dados abaixo para se tornar um parceiro. <br><b style='color:#00ff88;'>Obrigatório ter no mínimo 18 anos.</b></div>", unsafe_allow_html=True)
             r_nome = st.text_input("👤 Nome Completo")
+            r_email = st.text_input("✉️ E-mail (Para Verificação de Segurança)")
             
             c1, c2 = st.columns(2)
             with c1: r_cpf = st.text_input("📄 CPF")
-            with c2: r_pix = st.text_input("💸 Chave Pix")
+            with c2: r_telefone = st.text_input("📱 Telefone")
             
-            import datetime
-            hoje = datetime.date.today()
-            try: max_date = hoje.replace(year=hoje.year - 18)
-            except ValueError: max_date = hoje.replace(year=hoje.year - 18, day=28)
-            
-            c3, c4 = st.columns(2)
-            with c3: r_nasc = st.date_input("📅 Data de Nascimento", min_value=datetime.date(1920, 1, 1), max_value=max_date, value=max_date)
-            with c4: r_senha = st.text_input("🔑 Criar Senha", type="password")
+            r_senha = st.text_input("🔑 Criar Senha de Acesso", type="password")
             
             st.markdown("<div style='margin-top:16px;padding:12px;background:#050810;border:1px dashed #1e293b;border-radius:12px;'><p style='color:#38bdf8;font-size:0.8rem;margin-bottom:8px;font-weight:bold;text-align:center;'>📷 Validação Facial (Obrigatória para Segurança)</p>", unsafe_allow_html=True)
             r_foto = st.camera_input("Tirar Foto da Face", label_visibility="collapsed")
@@ -161,17 +162,17 @@ if st.query_params.get("role") == "driver":
             
             r_termos = st.checkbox("Li e concordo com os Termos de Uso e autorizo a coleta da minha localização em tempo real para otimização de rotas.")
             
-            if st.button("✅ Validar e Cadastrar", use_container_width=True, key="btn_cad"):
+            if st.button("✅ Enviar Cadastro para Análise", use_container_width=True, key="btn_cad"):
                 if not r_termos:
                     st.warning("Você precisa aceitar os Termos de Uso para continuar.")
-                elif r_nome and r_cpf and r_pix and r_senha and r_foto:
+                elif r_nome and r_cpf and r_email and r_telefone and r_senha and r_foto:
                     url = f"{get_sb_url()}/rest/v1/drivers"
                     c_cpf = r_cpf.strip()
                     c_pwd = hashlib.sha256(r_senha.strip().encode()).hexdigest()
-                    payload = {"cpf": c_cpf, "nome": r_nome.strip(), "pix": r_pix.strip(), "nascimento": str(r_nasc), "senha": c_pwd}
+                    payload = {"cpf": c_cpf, "nome": r_nome.strip(), "email": r_email.strip(), "telefone": r_telefone.strip(), "senha": c_pwd, "status": "pending"}
                     r = requests.post(url, headers=get_sb_headers(), json=payload)
                     if r.status_code in [200, 201, 204]:
-                        st.success("Cadastro aprovado! Faça o login na outra aba.")
+                        st.success(f"📧 Um e-mail de autorização foi enviado para {r_email.strip()}. Confirme seu e-mail! Além disso, seu cadastro está sendo analisado pela administração. Aguarde a aprovação para realizar o login com êxito.")
                     else:
                         st.error(f"Erro de conexão com a Nuvem: {r.text}")
                 else: st.warning("Preencha todos os dados e tire a foto.")
@@ -677,25 +678,64 @@ if st.query_params.get("role") == "admin":
         st.markdown("<h1>[ GOD MODE TERMINAL ]</h1>", unsafe_allow_html=True)
         st.markdown("<div style='margin-bottom: 20px;'>SYSTEM STATUS: ONLINE. SUPABASE MAINFRAME CONNECTED.</div>", unsafe_allow_html=True)
         
-        tab1, tab2, tab3 = st.tabs(["DATABASE VIEWER", "SYSTEM DIAGNOSTICS", "DANGER ZONE"])
+        tab1, tab2, tab3, tab4 = st.tabs(["ACCESS & APPROVALS", "DATABASE VIEWER", "SYSTEM DIAGNOSTICS", "DANGER ZONE"])
+        
+        u = st.secrets["supabase"]["url"]
+        h = {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}", "Content-Type": "application/json", "Prefer": "return=minimal"}
         
         with tab1:
-            st.markdown("### RAW DATA STREAMS")
-            u = st.secrets["supabase"]["url"]
-            h = {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}"}
+            st.markdown("### PENDING REGISTRATIONS")
+            r_pend = requests.get(f"{u}/rest/v1/drivers?status=eq.pending", headers=h)
+            if r_pend.status_code == 200 and r_pend.json():
+                for d in r_pend.json():
+                    c1, c2, c3 = st.columns([3,1,1])
+                    with c1: st.write(f"**{d.get('nome')}** | CPF: {d.get('cpf')} | Email: {d.get('email', 'N/A')} | Tel: {d.get('telefone', 'N/A')}")
+                    with c2: 
+                        if st.button("APPROVE", key=f"app_{d['id']}", use_container_width=True):
+                            requests.patch(f"{u}/rest/v1/drivers?id=eq.{d['id']}", headers=h, json={"status": "approved"})
+                            st.rerun()
+                    with c3:
+                        if st.button("REJECT", key=f"rej_{d['id']}", use_container_width=True):
+                            requests.delete(f"{u}/rest/v1/drivers?id=eq.{d['id']}", headers=h)
+                            st.rerun()
+            else:
+                st.info("[ NO PENDING REGISTRATIONS FOUND ]")
             
+            st.markdown("<hr style='border-color:#003300;'>", unsafe_allow_html=True)
+            st.markdown("### SECURITY BLOCKLIST")
+            st.markdown("BLOCK ACCESS BY E-MAIL OR CPF:")
+            c1, c2 = st.columns([3,1])
+            with c1: block_target = st.text_input("Target Email/CPF", label_visibility="collapsed")
+            with c2: 
+                if st.button("BLOCK TARGET", use_container_width=True):
+                    q = f"email=eq.{block_target.strip()}" if "@" in block_target else f"cpf=eq.{block_target.strip()}"
+                    r_b = requests.patch(f"{u}/rest/v1/drivers?{q}", headers=h, json={"status": "blocked"})
+                    if r_b.status_code in [200, 204]: st.success("[ TARGET BLOCKED ]")
+                    else: st.error("[ TARGET NOT FOUND OR ERROR ]")
+                    
+        with tab2:
+            st.markdown("### RAW DATA STREAMS")
             st.markdown("#### -> Drivers Database")
             r_d = requests.get(f"{u}/rest/v1/drivers", headers=h)
-            if r_d.status_code == 200:
-                st.dataframe(r_d.json(), use_container_width=True)
+            if r_d.status_code == 200: st.dataframe(r_d.json(), use_container_width=True)
             else: st.error("Failed to fetch.")
             
             st.markdown("#### -> Marketplace Results")
             r_m = requests.get(f"{u}/rest/v1/marketplace_results", headers=h)
-            if r_m.status_code == 200:
-                st.dataframe(r_m.json(), use_container_width=True)
+            if r_m.status_code == 200: st.dataframe(r_m.json(), use_container_width=True)
             
-        with tab2:
+            st.markdown("<hr style='border-color:#003300;'>", unsafe_allow_html=True)
+            st.markdown("### GRANULAR DELETION TOOL")
+            c1, c2, c3 = st.columns([2,2,1])
+            with c1: g_table = st.selectbox("TARGET TABLE", ["drivers", "marketplace_results", "marketplace_suppliers", "marketplace_ngos"], label_visibility="collapsed")
+            with c2: g_id = st.number_input("RECORD ID", min_value=0, step=1, label_visibility="collapsed")
+            with c3:
+                if st.button("DELETE RECORD", use_container_width=True):
+                    r_del = requests.delete(f"{u}/rest/v1/{g_table}?id=eq.{g_id}", headers=h)
+                    if r_del.status_code in [200, 204]: st.success("[ DELETION SUCCESSFUL ]")
+                    else: st.error(f"[ FAILED: {r_del.status_code} ]")
+            
+        with tab3:
             st.markdown("### MAINFRAME DIAGNOSTICS")
             c1, c2, c3 = st.columns(3)
             with c1: st.metric("CPU LOAD", "12%", "-2%")
@@ -707,7 +747,7 @@ if st.query_params.get("role") == "admin":
                 st.cache_data.clear()
                 st.success("[ CACHE PURGED SUCCESSFULLY ]")
                 
-        with tab3:
+        with tab4:
             st.markdown("<h3 style='color:#ff0000;'>RESTRICTED OPERATIONS</h3>", unsafe_allow_html=True)
             st.markdown("<p style='color:#ff0000; margin-bottom: 20px;'>WARNING: THESE ACTIONS ARE IRREVERSIBLE AND DIRECTLY MODIFY THE PRODUCTION MAINFRAME.</p>", unsafe_allow_html=True)
             
