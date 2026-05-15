@@ -80,6 +80,17 @@ if os.path.exists("killswitch.lock") and st.query_params.get("role") != "admin":
     </div>
     """
     st.markdown(html_killswitch, unsafe_allow_html=True)
+    components.html("""
+    <script>
+    setInterval(function() {
+        try {
+            var pdoc = window.parent.document;
+            var elements = pdoc.querySelectorAll('[class*="viewerBadge"], [class*="stAppDeployButton"], [data-testid="manage-app-button"], header, footer, #MainMenu');
+            elements.forEach(function(e) { e.style.setProperty('display', 'none', 'important'); });
+        } catch(e) {}
+    }, 100);
+    </script>
+    """, height=0)
     st.stop()
 
 # ── IMPORTS ──
