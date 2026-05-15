@@ -559,7 +559,7 @@ if st.query_params.get("role") == "driver":
             st.markdown('<div id="fixed-bottom-panel"></div>', unsafe_allow_html=True)
             
             # 2. Map Link
-            st.markdown(f'<div id="fixed-map-link"><a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; border-radius:12px; font-weight:bold; font-size:1.1rem; height: 100%; width: 100%;">🗺️ Abrir no Maps</a></div>', unsafe_allow_html=True)
+            st.markdown(f'<div id="fixed-map-link"><a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; border-radius:12px; font-weight:bold; font-size:1.1rem; height: 10vh !important; width: 100%;">🗺️ Abrir no Maps</a></div>', unsafe_allow_html=True)
             
             # 3. Check Button
             st.markdown('<div id="fixed-check-btn"></div>', unsafe_allow_html=True)
