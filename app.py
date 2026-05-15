@@ -25,8 +25,27 @@ from optimization import run_optimization, simulate_current_scenario, apply_disa
 @st.cache_data(show_spinner=False)
 def geocode_address(address):
     try:
+        import re
+        query = address
+        cep_match = re.search(r'\b(\d{5})-?(\d{3})\b', address)
+        if cep_match:
+            cep_str = f"{cep_match.group(1)}{cep_match.group(2)}"
+            vc_req = requests.get(f"https://viacep.com.br/ws/{cep_str}/json/", timeout=5)
+            if vc_req.status_code == 200 and not vc_req.json().get("erro"):
+                data = vc_req.json()
+                addr_without_cep = re.sub(r'\b\d{5}-?\d{3}\b', '', address)
+                num_match = re.search(r'\b(\d+)\b', addr_without_cep)
+                numero = num_match.group(1) if num_match else ""
+                logradouro = data.get("logradouro", "")
+                cidade = data.get("localidade", "")
+                estado = data.get("uf", "")
+                if logradouro:
+                    query = f"{logradouro}, {numero}, {cidade}, {estado}, Brazil"
+                else:
+                    query = f"{cidade}, {estado}, Brazil"
+                    
         r = requests.get("https://nominatim.openstreetmap.org/search",
-            params={"q": address, "format": "json", "limit": 1},
+            params={"q": query, "format": "json", "limit": 1},
             headers={"User-Agent": "SmartSurplus/2.0"}, timeout=5)
         if r.status_code == 200 and r.json():
             d = r.json()[0]; return float(d["lat"]), float(d["lon"])
