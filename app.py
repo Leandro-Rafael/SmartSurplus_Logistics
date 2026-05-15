@@ -691,12 +691,12 @@ if st.query_params.get("role") == "admin":
                     c1, c2, c3 = st.columns([3,1,1])
                     with c1: st.write(f"**{d.get('nome')}** | CPF: {d.get('cpf')} | Email: {d.get('email', 'N/A')} | Tel: {d.get('telefone', 'N/A')}")
                     with c2: 
-                        if st.button("APPROVE", key=f"app_{d['id']}", use_container_width=True):
-                            requests.patch(f"{u}/rest/v1/drivers?id=eq.{d['id']}", headers=h, json={"status": "approved"})
+                        if st.button("APPROVE", key=f"app_{d.get('cpf')}", use_container_width=True):
+                            requests.patch(f"{u}/rest/v1/drivers?cpf=eq.{d.get('cpf')}", headers=h, json={"status": "approved"})
                             st.rerun()
                     with c3:
-                        if st.button("REJECT", key=f"rej_{d['id']}", use_container_width=True):
-                            requests.delete(f"{u}/rest/v1/drivers?id=eq.{d['id']}", headers=h)
+                        if st.button("REJECT", key=f"rej_{d.get('cpf')}", use_container_width=True):
+                            requests.delete(f"{u}/rest/v1/drivers?cpf=eq.{d.get('cpf')}", headers=h)
                             st.rerun()
             else:
                 st.info("[ NO PENDING REGISTRATIONS FOUND ]")
