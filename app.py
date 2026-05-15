@@ -358,6 +358,11 @@ if st.query_params.get("role") == "driver":
             r = requests.get(url, headers=get_sb_headers())
             if r.status_code == 200 and r.json():
                 df = pd.DataFrame(r.json())
+                if "status" in df.columns:
+                    df = df[df["status"] != "concluida"]
+                if df.empty:
+                    st.info("Todas as cargas disponíveis já foram retiradas por outros motoristas.")
+                    st.stop()
                 df = df.rename(columns={"fornecedor":"Fornecedor", "ong":"ONG", "qtde_kg":"Qtde_kg", "distancia_km":"Distancia_km"})
             else: 
                 st.info("A otimização ainda não foi gerada pelo despachante (banco de dados vazio).")
@@ -613,7 +618,8 @@ if st.query_params.get("role") == "driver":
                     try:
                         h = get_sb_headers()
                         u = get_sb_url()
-                        requests.delete(f"{u}/rest/v1/marketplace_results?fornecedor=eq.{urllib.parse.quote(lote_id)}", headers=h)
+                        driver_cpf = st.session_state.driver_data.get("cpf", "")
+                        requests.patch(f"{u}/rest/v1/marketplace_results?fornecedor=eq.{urllib.parse.quote(lote_id)}", headers=h, json={"status": "concluida", "driver_cpf": driver_cpf})
                         requests.delete(f"{u}/rest/v1/marketplace_suppliers?nome=eq.{urllib.parse.quote(lote_id)}", headers=h)
                     except: pass
                 st.session_state["drive_state"] = "completed"; st.rerun()
@@ -678,12 +684,55 @@ if st.query_params.get("role") == "admin":
         st.markdown("<h1>[ GOD MODE TERMINAL ]</h1>", unsafe_allow_html=True)
         st.markdown("<div style='margin-bottom: 20px;'>SYSTEM STATUS: ONLINE. SUPABASE MAINFRAME CONNECTED.</div>", unsafe_allow_html=True)
         
-        tab1, tab2, tab3, tab4 = st.tabs(["ACCESS & APPROVALS", "DATABASE VIEWER", "SYSTEM DIAGNOSTICS", "DANGER ZONE"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["BUSINESS ANALYTICS", "ACCESS & APPROVALS", "DATABASE VIEWER", "SYSTEM DIAGNOSTICS", "DANGER ZONE"])
         
         u = st.secrets["supabase"]["url"]
         h = {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}", "Content-Type": "application/json", "Prefer": "return=minimal"}
         
         with tab1:
+            st.markdown("### 📊 PLATFORM PERFORMANCE")
+            r_all = requests.get(f"{u}/rest/v1/marketplace_results", headers=h)
+            if r_all.status_code == 200 and r_all.json():
+                df_all = pd.DataFrame(r_all.json())
+                
+                if "status" in df_all.columns:
+                    df_concl = df_all[df_all["status"] == "concluida"]
+                else:
+                    df_concl = pd.DataFrame()
+                
+                total_entregas = len(df_concl)
+                total_comida = df_concl["qtde_kg"].sum() if not df_concl.empty and "qtde_kg" in df_concl.columns else 0
+                total_km = df_concl["distancia_km"].sum() if not df_concl.empty and "distancia_km" in df_concl.columns else 0
+                
+                faturamento_motoristas = total_comida * 1.50
+                lucro_plataforma = faturamento_motoristas * 0.15
+                
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.metric("📦 COMIDA DISTRIBUÍDA", f"{total_comida:,.0f} kg")
+                    st.metric("🚚 ENTREGAS REALIZADAS", f"{total_entregas}")
+                with c2:
+                    st.metric("💰 FATURAMENTO (MOTORISTAS)", f"R$ {faturamento_motoristas:,.2f}")
+                    st.metric("📈 LUCRO PLATAFORMA (15%)", f"R$ {lucro_plataforma:,.2f}")
+                with c3:
+                    st.metric("🛣️ DISTÂNCIA PERCORRIDA", f"{total_km:,.1f} km")
+                    r_drv = requests.get(f"{u}/rest/v1/drivers", headers=h)
+                    num_drivers = len(r_drv.json()) if r_drv.status_code == 200 else 0
+                    st.metric("👥 MOTORISTAS CADASTRADOS", f"{num_drivers}")
+                    
+                st.markdown("<hr style='border-color:#003300;'>", unsafe_allow_html=True)
+                st.markdown("### 🏆 TOP MOTORISTAS (LÍDERES DE ENTREGA)")
+                if not df_concl.empty and "driver_cpf" in df_concl.columns:
+                    df_drv = df_concl.groupby("driver_cpf").agg({"qtde_kg": "sum", "distancia_km": "sum"}).reset_index()
+                    df_drv["faturamento (R$)"] = df_drv["qtde_kg"] * 1.50
+                    df_drv = df_drv.sort_values(by="qtde_kg", ascending=False)
+                    st.dataframe(df_drv, use_container_width=True)
+                else:
+                    st.info("[ AINDA NÃO HÁ DADOS DE MOTORISTAS PARA EXIBIR ]")
+            else:
+                st.info("[ BANCO DE DADOS VAZIO ]")
+
+        with tab2:
             st.markdown("### PENDING REGISTRATIONS")
             r_pend = requests.get(f"{u}/rest/v1/drivers?status=eq.pending", headers=h)
             if r_pend.status_code == 200 and r_pend.json():
@@ -721,7 +770,7 @@ if st.query_params.get("role") == "admin":
                         if r_u.status_code in [200, 204]: st.success("[ TARGET UNBLOCKED ]")
                         else: st.error("[ TARGET NOT FOUND OR ERROR ]")
                     
-        with tab2:
+        with tab3:
             st.markdown("### RAW DATA STREAMS")
             st.markdown("#### -> Drivers Database")
             r_d = requests.get(f"{u}/rest/v1/drivers", headers=h)
@@ -733,10 +782,12 @@ if st.query_params.get("role") == "admin":
             if r_m.status_code == 200: st.dataframe(r_m.json(), use_container_width=True)
             
             st.markdown("<hr style='border-color:#003300;'>", unsafe_allow_html=True)
-            st.markdown("### GRANULAR DELETION TOOL")
+            st.markdown("### GRANULAR DELETION TOOL (RESTRICTED)")
             st.markdown("DELETE A SINGLE RECORD OR A RANGE OF RECORDS. LEAVE 'TO ID' AS 0 TO DELETE A SINGLE RECORD.")
             c1, c2, c3, c4 = st.columns([2,1,1,1.5])
-            with c1: g_table = st.selectbox("TARGET TABLE", ["drivers", "marketplace_results", "marketplace_suppliers", "marketplace_ngos"], label_visibility="collapsed")
+            with c1: 
+                st.text_input("TARGET TABLE", value="marketplace_results (LOCKED)", disabled=True, label_visibility="collapsed")
+                g_table = "marketplace_results"
             with c2: g_id1 = st.number_input("FROM ID", min_value=0, step=1, label_visibility="collapsed")
             with c3: g_id2 = st.number_input("TO ID", min_value=0, step=1, value=0, label_visibility="collapsed")
             with c4:
@@ -751,7 +802,7 @@ if st.query_params.get("role") == "admin":
                     if r_del.status_code in [200, 204]: st.success("[ DELETION SUCCESSFUL ]")
                     else: st.error(f"[ FAILED: {r_del.status_code} ]")
             
-        with tab3:
+        with tab4:
             st.markdown("### MAINFRAME DIAGNOSTICS")
             c1, c2, c3 = st.columns(3)
             with c1: st.metric("CPU LOAD", "12%", "-2%")
@@ -763,21 +814,14 @@ if st.query_params.get("role") == "admin":
                 st.cache_data.clear()
                 st.success("[ CACHE PURGED SUCCESSFULLY ]")
                 
-        with tab4:
+        with tab5:
             st.markdown("<h3 style='color:#ff0000;'>RESTRICTED OPERATIONS</h3>", unsafe_allow_html=True)
             st.markdown("<p style='color:#ff0000; margin-bottom: 20px;'>WARNING: THESE ACTIONS ARE IRREVERSIBLE AND DIRECTLY MODIFY THE PRODUCTION MAINFRAME.</p>", unsafe_allow_html=True)
             
             st.markdown('<div class="nuke-btn">', unsafe_allow_html=True)
             if st.button("NUKE MARKETPLACE DATABASE (PURGE ALL ROUTES)", use_container_width=True):
                 r1 = requests.delete(f"{u}/rest/v1/marketplace_results?id=gte.0", headers=h)
-                r2 = requests.delete(f"{u}/rest/v1/marketplace_suppliers?lat=gte.-90", headers=h)
-                r3 = requests.delete(f"{u}/rest/v1/marketplace_ngos?lat=gte.-90", headers=h)
-                st.success(f"[ PURGE COMPLETE. STATUS: {r1.status_code}, {r2.status_code}, {r3.status_code} ]")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("PURGE DRIVER DATABASE", use_container_width=True):
-                r = requests.delete(f"{u}/rest/v1/drivers?id=gte.0", headers=h)
-                st.success(f"[ DRIVERS PURGED. STATUS: {r.status_code} ]")
+                st.success(f"[ PURGE COMPLETE. STATUS: {r1.status_code} ]")
             st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
