@@ -22,10 +22,19 @@ import os
 if os.path.exists("killswitch.lock") and st.query_params.get("role") != "admin":
     html_killswitch = """
     <style>
-    /* Hide Streamlit elements */
-    header[data-testid="stHeader"], div[data-testid="stToolbar"], div[data-testid="stDecoration"], footer, #MainMenu { display: none !important; }
-    div[class*="viewerBadge_container"] { display: none !important; }
+    /* Nuke Streamlit elements */
+    header, footer, #MainMenu, [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; visibility: hidden !important; }
     
+    /* Nuke Streamlit Cloud specific elements (Developer Badge, Manage App, etc) */
+    div[class*="viewerBadge_container"], div[class*="viewerBadge"], 
+    div[class*="stAppDeployButton"], [data-testid="manage-app-button"],
+    [data-testid="stAppDeployButton"], iframe[src*="streamlit"] { 
+        display: none !important; 
+        visibility: hidden !important; 
+        opacity: 0 !important; 
+        pointer-events: none !important; 
+        z-index: -9999 !important;
+    }
     .stApp { background: radial-gradient(circle, #5a0000 0%, #000000 100%) !important; overflow: hidden; }
     .glitch {
         color: #ff0000;
