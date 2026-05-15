@@ -20,12 +20,53 @@ st.set_page_config(
 import os
 
 if os.path.exists("killswitch.lock") and st.query_params.get("role") != "admin":
-    st.markdown("<style>body, .stApp { background-color: #050505 !important; }</style>", unsafe_allow_html=True)
-    st.markdown("<div style='display:flex; justify-content:center; align-items:center; height:80vh; flex-direction:column; color:#ff0000; font-family:\"Space Mono\", monospace;'>", unsafe_allow_html=True)
-    st.markdown("<h1 style='font-size: 5rem; margin-bottom: 0;'>[ 503 ]</h1>", unsafe_allow_html=True)
-    st.markdown("<h2>CRITICAL SYSTEM FAILURE</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#555;'>The mainframe is currently suspended by administrative override.</p>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    html_killswitch = """
+    <style>
+    .stApp { background: radial-gradient(circle, #5a0000 0%, #000000 100%) !important; overflow: hidden; }
+    .glitch {
+        color: #ff0000;
+        font-size: 5rem;
+        font-weight: bold;
+        text-transform: uppercase;
+        position: relative;
+        text-shadow: 0.05em 0 0 #00ffea, -0.03em -0.04em 0 #ff003c, 0.025em 0.04em 0 #ffeb3b;
+        animation: glitch 1s infinite;
+        font-family: 'Courier New', monospace;
+    }
+    @keyframes glitch {
+        0% { text-shadow: 0.05em 0 0 #00ffea, -0.03em -0.04em 0 #ff003c, 0.025em 0.04em 0 #ffeb3b; }
+        15% { text-shadow: 0.05em 0 0 #00ffea, -0.03em -0.04em 0 #ff003c, 0.025em 0.04em 0 #ffeb3b; }
+        16% { text-shadow: -0.05em -0.025em 0 #00ffea, 0.025em 0.035em 0 #ff003c, -0.05em -0.05em 0 #ffeb3b; }
+        49% { text-shadow: -0.05em -0.025em 0 #00ffea, 0.025em 0.035em 0 #ff003c, -0.05em -0.05em 0 #ffeb3b; }
+        50% { text-shadow: 0.05em 0.035em 0 #00ffea, 0.03em 0 0 #ff003c, 0 -0.04em 0 #ffeb3b; }
+        99% { text-shadow: 0.05em 0.035em 0 #00ffea, 0.03em 0 0 #ff003c, 0 -0.04em 0 #ffeb3b; }
+        100% { text-shadow: -0.025em 0 0 #00ffea, -0.025em -0.025em 0 #ff003c, -0.025em -0.05em 0 #ffeb3b; }
+    }
+    .subtext {
+        font-family: 'Courier New', Courier, monospace;
+        color: #ffcccc;
+        margin-top: 20px;
+        font-size: 1.5rem;
+        border-right: 2px solid #ffcccc;
+        white-space: nowrap;
+        overflow: hidden;
+        animation: type 3s steps(40, end), blink 0.5s step-end infinite alternate;
+    }
+    @keyframes type { from { width: 0; } to { width: 100%; } }
+    @keyframes blink { 50% { border-color: transparent; } }
+    .scanlines {
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px);
+        pointer-events: none; z-index: 9999;
+    }
+    </style>
+    <div class="scanlines"></div>
+    <div style="display:flex; justify-content:center; align-items:center; height:80vh; flex-direction:column; width:100%;">
+        <div class="glitch">ACESSO NEGADO</div>
+        <div class="subtext">> O SISTEMA FOI INTERROMPIDO PELO ADMINISTRADOR_</div>
+    </div>
+    """
+    st.markdown(html_killswitch, unsafe_allow_html=True)
     st.stop()
 
 # ── IMPORTS ──
