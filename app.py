@@ -547,19 +547,20 @@ if st.query_params.get("role") == "driver":
             div.element-container:has(#fixed-bottom-panel) { position: fixed !important; bottom: 0 !important; left: 0 !important; width: 100vw !important; height: 20vh !important; background: #030712 !important; z-index: 999990 !important; border-top: 2px solid #1e293b; }
             
             /* Map Link container */
-            div.element-container:has(#fixed-map-link) { position: fixed !important; bottom: 5vh !important; left: 4vw !important; width: 70vw !important; height: 10vh !important; z-index: 999995 !important; }
-            #fixed-map-link { height: 100%; width: 100%; }
+            div.element-container:has(#fixed-map-link) { position: fixed !important; bottom: 5vh !important; left: 4vw !important; width: 70vw !important; height: 64px !important; z-index: 999995 !important; }
+            div.element-container:has(#fixed-map-link) * { height: 100% !important; margin: 0 !important; padding: 0 !important; box-sizing: border-box !important; }
+            #fixed-map-link { height: 100%; width: 100%; display: flex; justify-content: center; align-items: center; }
             
             /* Check button container */
-            div.element-container:has(#fixed-check-btn) + div.element-container { position: fixed !important; bottom: 5vh !important; right: 4vw !important; width: 18vw !important; height: 10vh !important; z-index: 999995 !important; margin: 0 !important; padding: 0 !important; }
-            div.element-container:has(#fixed-check-btn) + div.element-container [data-testid="stButton"] button { border-radius: 12px !important; height: 10vh !important; padding: 0 !important; font-size: 2rem !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; margin: 0 !important; }
+            div.element-container:has(#fixed-check-btn) + div.element-container { position: fixed !important; bottom: 5vh !important; right: 4vw !important; width: 18vw !important; height: 64px !important; z-index: 999995 !important; margin: 0 !important; padding: 0 !important; }
+            div.element-container:has(#fixed-check-btn) + div.element-container [data-testid="stButton"] button { border-radius: 12px !important; height: 64px !important; padding: 0 !important; font-size: 2rem !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; margin: 0 !important; box-sizing: border-box !important; }
             </style>""", unsafe_allow_html=True)
             
             # 1. Background Panel
             st.markdown('<div id="fixed-bottom-panel"></div>', unsafe_allow_html=True)
             
             # 2. Map Link
-            st.markdown(f'<div id="fixed-map-link"><a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; border-radius:12px; font-weight:bold; font-size:1.1rem; height: 10vh !important; width: 100%;">🗺️ Abrir no Maps</a></div>', unsafe_allow_html=True)
+            st.markdown(f'<div id="fixed-map-link"><a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; border-radius:12px; font-weight:bold; font-size:1.1rem; height: 100% !important; width: 100% !important;">🗺️ Abrir no Maps</a></div>', unsafe_allow_html=True)
             
             # 3. Check Button
             st.markdown('<div id="fixed-check-btn"></div>', unsafe_allow_html=True)
