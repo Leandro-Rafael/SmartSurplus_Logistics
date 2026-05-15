@@ -1392,11 +1392,15 @@ else:
         st.session_state.aba_selecionada = menu_opcoes[0]
         
     st.markdown('<div class="sticky-header">', unsafe_allow_html=True)
-    with st.popover(f"{st.session_state.aba_selecionada}", use_container_width=True):
-        for op in menu_opcoes:
-            if st.button(op, use_container_width=True, key=f"nav_{op}"):
-                st.session_state.aba_selecionada = op
-                st.rerun()
+    aba = st.selectbox(
+        "Navegação",
+        menu_opcoes,
+        index=menu_opcoes.index(st.session_state.aba_selecionada),
+        label_visibility="collapsed"
+    )
+    if aba != st.session_state.aba_selecionada:
+        st.session_state.aba_selecionada = aba
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
     aba_selecionada = st.session_state.aba_selecionada
