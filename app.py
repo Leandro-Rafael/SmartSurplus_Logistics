@@ -17,6 +17,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
     page_icon="⬡"
 )
+import os
+
+if os.path.exists("killswitch.lock") and st.query_params.get("role") != "admin":
+    st.markdown("<style>body, .stApp { background-color: #050505 !important; }</style>", unsafe_allow_html=True)
+    st.markdown("<div style='display:flex; justify-content:center; align-items:center; height:80vh; flex-direction:column; color:#ff0000; font-family:\"Space Mono\", monospace;'>", unsafe_allow_html=True)
+    st.markdown("<h1 style='font-size: 5rem; margin-bottom: 0;'>[ 503 ]</h1>", unsafe_allow_html=True)
+    st.markdown("<h2>CRITICAL SYSTEM FAILURE</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#555;'>The mainframe is currently suspended by administrative override.</p>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
 
 # ── IMPORTS ──
 from data_generator import generate_suppliers, generate_ngos, calculate_distance_matrix, haversine
@@ -822,6 +832,21 @@ if st.query_params.get("role") == "admin":
             if st.button("NUKE MARKETPLACE DATABASE (PURGE ALL ROUTES)", use_container_width=True):
                 r1 = requests.delete(f"{u}/rest/v1/marketplace_results?id=gte.0", headers=h)
                 st.success(f"[ PURGE COMPLETE. STATUS: {r1.status_code} ]")
+            
+            st.markdown("<hr style='border-color:#ff0000; margin: 30px 0;'>", unsafe_allow_html=True)
+            st.markdown("<h4 style='color:#ff0000; text-align:center;'>GLOBAL OVERRIDE</h4>", unsafe_allow_html=True)
+            import os
+            if os.path.exists("killswitch.lock"):
+                if st.button("🟢 DEACTIVATE KILL SWITCH (BRING SITE ONLINE)", use_container_width=True):
+                    os.remove("killswitch.lock")
+                    st.success("[ SYSTEM ONLINE ]")
+                    st.rerun()
+            else:
+                if st.button("🔴 ACTIVATE KILL SWITCH (TAKE SITE OFFLINE)", use_container_width=True):
+                    with open("killswitch.lock", "w") as f: f.write("offline")
+                    st.error("[ SYSTEM KILLED. SITE IS NOW OFFLINE. ]")
+                    st.rerun()
+                    
             st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
