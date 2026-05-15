@@ -1194,33 +1194,36 @@ else:
         res, sur, dfc, opt = run_optimization(sup, ong, dist_dict)
         st.session_state.update({"results":res,"surplus_df":sur,"deficit_df":dfc,"caos":caos,"opt":opt})
         
-        # Salvar resultados no Supabase
-        try:
-            h = {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}", "Content-Type": "application/json"}
-            u = st.secrets["supabase"]["url"]
-            is_demo = st.session_state.get("is_demo", False)
-            if is_demo:
+        # Salvar resultados no Supabase apenas se NÃO for modo demo
+        is_demo = st.session_state.get("is_demo", False)
+        if not is_demo:
+            try:
+                h = {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}", "Content-Type": "application/json"}
+                u = st.secrets["supabase"]["url"]
+                
+                # Delete old data before inserting new valid manual data
                 requests.delete(f"{u}/rest/v1/marketplace_results?id=gte.0", headers=h)
                 requests.delete(f"{u}/rest/v1/marketplace_suppliers?lat=gte.-90", headers=h)
                 requests.delete(f"{u}/rest/v1/marketplace_ngos?lat=gte.-90", headers=h)
-            
-            if not res.empty: 
-                r_with_names = res.merge(sup[["ID","Nome"]], left_on="Fornecedor", right_on="ID").rename(columns={"Nome":"Fornecedor_Nome"})
-                r_with_names = r_with_names.merge(ong[["ID","Nome"]], left_on="ONG", right_on="ID").rename(columns={"Nome":"ONG_Nome"})
-                r_renamed = r_with_names.rename(columns={"Fornecedor_Nome":"fornecedor", "ONG_Nome":"ong", "Qtde_kg":"qtde_kg", "Distancia_km":"distancia_km"})
-                r_renamed = r_renamed[["fornecedor", "ong", "qtde_kg", "distancia_km"]]
-                r = requests.post(f"{u}/rest/v1/marketplace_results", headers=h, json=r_renamed.to_dict(orient="records"))
-                if r.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (Results): {r.text}")
-            if not sup.empty: 
-                s_renamed = sup.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
-                r2 = requests.post(f"{u}/rest/v1/marketplace_suppliers", headers=h, json=s_renamed.to_dict(orient="records"))
-                if r2.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (Suppliers): {r2.text}")
-            if not ong.empty: 
-                o_renamed = ong.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
-                r3 = requests.post(f"{u}/rest/v1/marketplace_ngos", headers=h, json=o_renamed.to_dict(orient="records"))
-                if r3.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (NGOs): {r3.text}")
-        except Exception as e:
-            st.error(f"Erro ao sincronizar com a nuvem (Supabase): {e}")
+                
+                if not res.empty: 
+                    r_with_names = res.merge(sup[["ID","Nome"]], left_on="Fornecedor", right_on="ID").rename(columns={"Nome":"Fornecedor_Nome"})
+                    r_with_names = r_with_names.merge(ong[["ID","Nome"]], left_on="ONG", right_on="ID").rename(columns={"Nome":"ONG_Nome"})
+                    r_renamed = r_with_names.rename(columns={"Fornecedor_Nome":"fornecedor", "ONG_Nome":"ong", "Qtde_kg":"qtde_kg", "Distancia_km":"distancia_km"})
+                    r_renamed = r_renamed[["fornecedor", "ong", "qtde_kg", "distancia_km"]]
+                    r = requests.post(f"{u}/rest/v1/marketplace_results", headers=h, json=r_renamed.to_dict(orient="records"))
+                    if r.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (Results): {r.text}")
+                if not sup.empty: 
+                    s_renamed = sup.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
+                    r2 = requests.post(f"{u}/rest/v1/marketplace_suppliers", headers=h, json=s_renamed.to_dict(orient="records"))
+                    if r2.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (Suppliers): {r2.text}")
+                if not ong.empty: 
+                    o_renamed = ong.rename(columns={"Nome":"nome","Lat":"lat","Lon":"lon"})[["nome","lat","lon"]]
+                    r3 = requests.post(f"{u}/rest/v1/marketplace_ngos", headers=h, json=o_renamed.to_dict(orient="records"))
+                    if r3.status_code not in [200, 201, 204]: st.error(f"Erro Supabase (NGOs): {r3.text}")
+            except Exception as e:
+                st.error(f"Erro ao sincronizar com a nuvem (Supabase): {e}")
+
 
     # ── SIDEBAR ──
     with st.sidebar:
