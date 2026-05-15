@@ -571,8 +571,8 @@ if st.query_params.get("role") == "driver":
             
             /* Map Link container */
             div.element-container:has(#fixed-map-link) { position: fixed !important; bottom: 5vh !important; left: 4vw !important; width: 70vw !important; height: 64px !important; z-index: 999995 !important; }
-            div.element-container:has(#fixed-map-link) * { height: 100% !important; margin: 0 !important; padding: 0 !important; box-sizing: border-box !important; }
-            #fixed-map-link { height: 100%; width: 100%; display: flex; justify-content: center; align-items: center; }
+            div.element-container:has(#fixed-map-link) * { height: 100% !important; width: 100% !important; margin: 0 !important; padding: 0 !important; box-sizing: border-box !important; }
+            #fixed-map-link { display: flex; justify-content: center; align-items: center; }
             
             /* Check button container */
             div.element-container:has(#fixed-check-btn) + div.element-container { position: fixed !important; bottom: 5vh !important; right: 4vw !important; width: 18vw !important; height: 64px !important; z-index: 999995 !important; margin: 0 !important; padding: 0 !important; }
