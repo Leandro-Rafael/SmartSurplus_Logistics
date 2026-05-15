@@ -462,14 +462,37 @@ if st.query_params.get("role") == "driver":
                 icone = "A" if i == 0 else str(i+1)
                 m_cor = cor if i > 0 else "#ffffff"
                 folium.Marker(c, icon=folium.DivIcon(html=f'<div style="background:{m_cor};width:24px;height:24px;border-radius:50%;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#000;">{icone}</div>',icon_size=(24,24),icon_anchor=(12,12))).add_to(m)
-            st_folium(m, width="100%", height=520, returned_objects=[])
+            st_folium(m, width="100%", height=800, returned_objects=[])
         
         if drive_state == "pending":
-            st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
-            st.markdown(f'<div style="display:flex;justify-content:space-between;margin-bottom:12px;"><div style="color:#9ca3af;font-size:.7rem;letter-spacing:2px;text-transform:uppercase;">Navegação // GPS</div><div style="color:{cor};font-size:.9rem;font-weight:bold;font-family:monospace;">Lucro: R$ {lucro:.2f}</div></div>', unsafe_allow_html=True)
+            st.markdown("""<style>
+            .stApp { overflow: hidden !important; }
+            .block-container { padding: 0 !important; margin: 0 !important; max-width: 100vw !important; overflow: hidden !important; }
+            
+            /* Target the st_folium iframe */
+            iframe { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 80vh !important; border: none !important; z-index: 10; }
+            
+            /* Background panel */
+            div.element-container:has(#fixed-pending-panel) { position: fixed !important; bottom: 0 !important; left: 0 !important; width: 100vw !important; height: 20vh !important; background: #030712 !important; z-index: 999990 !important; border-top: 2px solid #1e293b; }
+            
+            /* Info text container */
+            div.element-container:has(#fixed-info-text) { position: fixed !important; bottom: calc(4vh + 74px) !important; left: 5vw !important; width: 90vw !important; z-index: 999995 !important; }
+            
+            /* Iniciar Corrida button container */
+            div.element-container:has(#fixed-start-btn) + div.element-container { position: fixed !important; bottom: 4vh !important; left: 5vw !important; width: 90vw !important; height: 64px !important; z-index: 999995 !important; margin: 0 !important; padding: 0 !important; }
+            div.element-container:has(#fixed-start-btn) + div.element-container [data-testid="stButton"] button { border-radius: 12px !important; height: 64px !important; padding: 0 !important; font-size: 1.6rem !important; font-weight: bold !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; margin: 0 !important; box-sizing: border-box !important; }
+            </style>""", unsafe_allow_html=True)
+            
+            # 1. Background Panel
+            st.markdown('<div id="fixed-pending-panel"></div>', unsafe_allow_html=True)
+            
+            # 2. Info Text (Navegação GPS / Lucro)
+            st.markdown(f'<div id="fixed-info-text" style="display:flex;justify-content:space-between;align-items:center;width:100%;"><div style="color:#9ca3af;font-size:.85rem;letter-spacing:1px;text-transform:uppercase;">Navegação GPS</div><div style="color:{cor};font-size:1.2rem;font-weight:bold;font-family:monospace;">Lucro: R$ {lucro:.2f}</div></div>', unsafe_allow_html=True)
+            
+            # 3. Start Button
+            st.markdown('<div id="fixed-start-btn"></div>', unsafe_allow_html=True)
             if st.button("🚀 INICIAR CORRIDA", use_container_width=True):
                 st.session_state["drive_state"] = "transit"; st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
             
         elif drive_state == "transit":
             import json
