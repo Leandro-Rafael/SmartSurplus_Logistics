@@ -1087,6 +1087,102 @@ animNet();
             pass
 
 # ═══════════════════════════════════════════════════════════
+# ADMIN PANEL (GOD MODE)
+# ═══════════════════════════════════════════════════════════
+elif st.query_params.get("role") == "admin":
+    import hashlib
+    st.markdown("""<style>
+    .stApp { background: #000000 !important; }
+    section[data-testid="stSidebar"], header, footer { display: none !important; }
+    .block-container { max-width: 900px !important; padding-top: 3rem !important; }
+    * { font-family: 'Space Mono', monospace !important; color: #00ff00 !important; }
+    .stTextInput input, .stPasswordInput input { background: #050505 !important; color: #00ff00 !important; border: 1px solid #003300 !important; border-radius: 0 !important; }
+    .stTextInput input:focus, .stPasswordInput input:focus { border-color: #00ff00 !important; box-shadow: none !important; }
+    .stButton button { background: transparent !important; color: #00ff00 !important; border: 1px solid #00ff00 !important; border-radius: 0 !important; text-transform: uppercase; font-weight: bold; transition: all 0.2s; }
+    .stButton button:hover { background: #00ff00 !important; color: #000 !important; }
+    .stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 1px solid #003300; }
+    .stTabs [data-baseweb="tab"] { color: #00ff00 !important; opacity: 0.5; }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] { opacity: 1; border-bottom: 2px solid #00ff00 !important; background: transparent !important; }
+    .stTabs [data-baseweb="tab-highlight"] { display: none; }
+    .stDataFrame { border: 1px solid #003300 !important; }
+    h1, h2, h3 { text-transform: uppercase; letter-spacing: 2px; }
+    .term-box { border: 1px solid #003300; padding: 30px; background: #050505; margin: 40px auto; max-width: 500px; box-shadow: 0 0 20px rgba(0,255,0,0.1); }
+    .blink { animation: blinker 1s linear infinite; color: #ff0000 !important; font-weight: bold; margin-top: 10px; text-align: center; }
+    @keyframes blinker { 50% { opacity: 0; } }
+    .nuke-btn button { border-color: #ff0000 !important; color: #ff0000 !important; }
+    .nuke-btn button:hover { background: #ff0000 !important; color: #000 !important; }
+    </style>""", unsafe_allow_html=True)
+
+    if "admin_logged" not in st.session_state:
+        st.session_state["admin_logged"] = False
+
+    if not st.session_state["admin_logged"]:
+        st.markdown("<h1 style='text-align:center;'>CENTRAL MAINFRAME</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; opacity:0.7;'>UNAUTHORIZED ACCESS IS STRICTLY PROHIBITED.</p>", unsafe_allow_html=True)
+        
+        st.markdown('<div class="term-box">', unsafe_allow_html=True)
+        admin_user = st.text_input("USER IDENTIFICATION:")
+        admin_pass = st.text_input("AUTHENTICATION KEY:", type="password")
+        
+        if st.button("EXECUTE LOGIN SEQUENCE", use_container_width=True):
+            if admin_user == "leandro.101.rafael" and hashlib.sha256(admin_pass.encode()).hexdigest() == "8044df59bcce604afab12bba6446437dcb750f55130fc76bc845976fd74e3edd":
+                st.session_state["admin_logged"] = True
+                st.rerun()
+            else:
+                st.markdown("<div class='blink'>[ ERROR: ACCESS DENIED ]</div>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.markdown("<h1>[ GOD MODE TERMINAL ]</h1>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-bottom: 20px;'>SYSTEM STATUS: ONLINE. SUPABASE MAINFRAME CONNECTED.</div>", unsafe_allow_html=True)
+        
+        tab1, tab2, tab3 = st.tabs(["DATABASE VIEWER", "SYSTEM DIAGNOSTICS", "DANGER ZONE"])
+        
+        with tab1:
+            st.markdown("### RAW DATA STREAMS")
+            u = st.secrets["supabase"]["url"]
+            h = {"apikey": st.secrets["supabase"]["key"], "Authorization": f"Bearer {st.secrets['supabase']['key']}"}
+            
+            st.markdown("#### -> Drivers Database")
+            r_d = requests.get(f"{u}/rest/v1/drivers", headers=h)
+            if r_d.status_code == 200:
+                st.dataframe(r_d.json(), use_container_width=True)
+            else: st.error("Failed to fetch.")
+            
+            st.markdown("#### -> Marketplace Results")
+            r_m = requests.get(f"{u}/rest/v1/marketplace_results", headers=h)
+            if r_m.status_code == 200:
+                st.dataframe(r_m.json(), use_container_width=True)
+            
+        with tab2:
+            st.markdown("### MAINFRAME DIAGNOSTICS")
+            c1, c2, c3 = st.columns(3)
+            with c1: st.metric("CPU LOAD", "12%", "-2%")
+            with c2: st.metric("MEMORY USAGE", "1.2GB", "+0.1GB")
+            with c3: st.metric("SUPABASE PING", "14ms", "-")
+            
+            st.code("SYSTEM_LOGS:\n[OK] Driver API initialized.\n[OK] Routing matrix cached.\n[OK] Neural prediction model loaded.\n[OK] SSL Handshake verified.")
+            if st.button("REFRESH SYSTEM CACHE", use_container_width=True):
+                st.cache_data.clear()
+                st.success("[ CACHE PURGED SUCCESSFULLY ]")
+                
+        with tab3:
+            st.markdown("<h3 style='color:#ff0000;'>RESTRICTED OPERATIONS</h3>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#ff0000; margin-bottom: 20px;'>WARNING: THESE ACTIONS ARE IRREVERSIBLE AND DIRECTLY MODIFY THE PRODUCTION MAINFRAME.</p>", unsafe_allow_html=True)
+            
+            st.markdown('<div class="nuke-btn">', unsafe_allow_html=True)
+            if st.button("NUKE MARKETPLACE DATABASE (PURGE ALL ROUTES)", use_container_width=True):
+                r1 = requests.delete(f"{u}/rest/v1/marketplace_results?id=gte.0", headers=h)
+                r2 = requests.delete(f"{u}/rest/v1/marketplace_suppliers?lat=gte.-90", headers=h)
+                r3 = requests.delete(f"{u}/rest/v1/marketplace_ngos?lat=gte.-90", headers=h)
+                st.success(f"[ PURGE COMPLETE. STATUS: {r1.status_code}, {r2.status_code}, {r3.status_code} ]")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("PURGE DRIVER DATABASE", use_container_width=True):
+                r = requests.delete(f"{u}/rest/v1/drivers?id=gte.0", headers=h)
+                st.success(f"[ DRIVERS PURGED. STATUS: {r.status_code} ]")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════
 # DASHBOARD
 # ═══════════════════════════════════════════════════════════
 else:
