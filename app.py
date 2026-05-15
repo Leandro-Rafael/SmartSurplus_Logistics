@@ -22,6 +22,10 @@ import os
 if os.path.exists("killswitch.lock") and st.query_params.get("role") != "admin":
     html_killswitch = """
     <style>
+    /* Hide Streamlit elements */
+    header[data-testid="stHeader"], div[data-testid="stToolbar"], div[data-testid="stDecoration"], footer, #MainMenu { display: none !important; }
+    div[class*="viewerBadge_container"] { display: none !important; }
+    
     .stApp { background: radial-gradient(circle, #5a0000 0%, #000000 100%) !important; overflow: hidden; }
     .glitch {
         color: #ff0000;
