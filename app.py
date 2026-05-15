@@ -543,25 +543,36 @@ if st.query_params.get("role") == "driver":
             .block-container { padding: 0 !important; margin: 0 !important; max-width: 100vw !important; overflow: hidden !important; }
             iframe[title="streamlit.components.v1.components.html"] { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 80vh !important; border: none !important; z-index: 10; }
             
-            [data-testid="stHorizontalBlock"] { position: fixed !important; bottom: 0 !important; left: 0 !important; width: 100vw !important; height: 20vh !important; background: #030712 !important; flex-direction: row !important; flex-wrap: nowrap !important; align-items: center !important; justify-content: center !important; padding: 0 4vw !important; gap: 2vw !important; z-index: 999999 !important; border-top: 2px solid #1e293b; }
-            [data-testid="column"]:nth-child(1) { width: 78% !important; min-width: 78% !important; flex: 0 0 78% !important; padding: 0 !important; }
-            [data-testid="column"]:nth-child(2) { width: 20% !important; min-width: 20% !important; flex: 0 0 20% !important; padding: 0 !important; }
-            [data-testid="stButton"] button { border-radius: 12px !important; height: 10vh !important; padding: 0 !important; font-size: 2rem !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; }
+            /* Background panel */
+            div.element-container:has(#fixed-bottom-panel) { position: fixed !important; bottom: 0 !important; left: 0 !important; width: 100vw !important; height: 20vh !important; background: #030712 !important; z-index: 999990 !important; border-top: 2px solid #1e293b; }
+            
+            /* Map Link container */
+            div.element-container:has(#fixed-map-link) { position: fixed !important; bottom: 5vh !important; left: 4vw !important; width: 70vw !important; height: 10vh !important; z-index: 999995 !important; }
+            #fixed-map-link { height: 100%; width: 100%; }
+            
+            /* Check button container */
+            div.element-container:has(#fixed-check-btn) + div.element-container { position: fixed !important; bottom: 5vh !important; right: 4vw !important; width: 18vw !important; height: 10vh !important; z-index: 999995 !important; margin: 0 !important; padding: 0 !important; }
+            div.element-container:has(#fixed-check-btn) + div.element-container [data-testid="stButton"] button { border-radius: 12px !important; height: 10vh !important; padding: 0 !important; font-size: 2rem !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; margin: 0 !important; }
             </style>""", unsafe_allow_html=True)
-            c1, c2 = st.columns([4, 1])
-            with c1:
-                st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; border-radius:12px; font-weight:bold; font-size:1.1rem; height: 10vh; width: 100%;">🗺️ Abrir no Maps</a>', unsafe_allow_html=True)
-            with c2:
-                if st.button("✓", key="btn_entregue", use_container_width=True):
-                    lote_id = st.session_state.driver_selected_lote
-                    if lote_id:
-                        try:
-                            h = get_sb_headers()
-                            u = get_sb_url()
-                            requests.delete(f"{u}/rest/v1/marketplace_results?fornecedor=eq.{urllib.parse.quote(lote_id)}", headers=h)
-                            requests.delete(f"{u}/rest/v1/marketplace_suppliers?nome=eq.{urllib.parse.quote(lote_id)}", headers=h)
-                        except: pass
-                    st.session_state["drive_state"] = "completed"; st.rerun()
+            
+            # 1. Background Panel
+            st.markdown('<div id="fixed-bottom-panel"></div>', unsafe_allow_html=True)
+            
+            # 2. Map Link
+            st.markdown(f'<div id="fixed-map-link"><a href="{gmaps_url}" target="_blank" style="display:flex; justify-content:center; align-items:center; background:#1e293b; color:#fff; text-decoration:none; border-radius:12px; font-weight:bold; font-size:1.1rem; height: 100%; width: 100%;">🗺️ Abrir no Maps</a></div>', unsafe_allow_html=True)
+            
+            # 3. Check Button
+            st.markdown('<div id="fixed-check-btn"></div>', unsafe_allow_html=True)
+            if st.button("✓", key="btn_entregue", use_container_width=True):
+                lote_id = st.session_state.driver_selected_lote
+                if lote_id:
+                    try:
+                        h = get_sb_headers()
+                        u = get_sb_url()
+                        requests.delete(f"{u}/rest/v1/marketplace_results?fornecedor=eq.{urllib.parse.quote(lote_id)}", headers=h)
+                        requests.delete(f"{u}/rest/v1/marketplace_suppliers?nome=eq.{urllib.parse.quote(lote_id)}", headers=h)
+                    except: pass
+                st.session_state["drive_state"] = "completed"; st.rerun()
             
         elif drive_state == "completed":
             st.markdown('<div class="gps-panel">', unsafe_allow_html=True)
